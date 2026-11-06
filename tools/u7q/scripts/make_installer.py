@@ -124,7 +124,11 @@ mkdir -p "$D" 2>/dev/null
   # Dedicated chain, flush+refill: idempotent across re-arms.
   iptables -N ALV_BLOCK 2>/dev/null
   iptables -F ALV_BLOCK
-  for IP in 4.182.131.30 20.170.76.123 98.67.150.220 20.113.0.141 20.52.196.175 131.189.128.123 20.170.91.169; do
+  # tier-2 from the firmware dump: newsan-ads (shares 20.113.0.141 with
+  # rsc-ads), Chrome/Cloudflare DoH bypass, Google beacons + crash reporting
+  # + analytics. Google IPs rotate — pinned per resolution 2026-11-06.
+  for IP in 4.182.131.30 20.170.76.123 98.67.150.220 20.113.0.141 20.52.196.175 131.189.128.123 20.170.91.169 \
+            162.159.61.3 172.64.41.3 142.250.195.163 142.250.195.238 142.250.195.179 142.250.207.4; do
       iptables -A ALV_BLOCK -d $IP -j REJECT
   done
   iptables -A ALV_BLOCK -d 8.8.8.8 -p tcp --dport 443 -j REJECT
@@ -132,17 +136,22 @@ mkdir -p "$D" 2>/dev/null
   iptables -C OUTPUT -j ALV_BLOCK 2>/dev/null || iptables -I OUTPUT 1 -j ALV_BLOCK
   echo "ALV_BLOCK rules: $(iptables -L ALV_BLOCK -n | grep -c REJECT)"
   echo "--- step: launcher host ---"
-  # serve /APPS/launcher from the TV's own Node (phoenix) on :8765 so the home
-  # screen survives without the operator PC. Idempotent via listener probe —
-  # the server binds 0.0.0.0 (00000000:223D); accept loopback too (0100007F).
-  if ! grep -qE "(00000000|0100007F):223D[[:space:]]" /proc/net/tcp 2>/dev/null; then
-      # no nohup on this build; busybox setsid detaches from the session so the
-      # host survives ipk_install.sh exiting (and any SIGHUP storms)
-      busybox setsid /bin/sh -c 'LD_LIBRARY_PATH=/lib:/usr/local/lib:/basic/lib exec /opt/pkgs/tv.vidaa.app.phoenix//bin/phoenix /APPS/launcher/server.js' \
-          > /tmp/launcher-host.out 2>&1 < /dev/null &
-      sleep 2
+  # Full launcher: the Go bridge serves the page + /ws on 127.0.0.1:8770 and
+  # keeps the MQTT session to the TV's own broker — the TV is self-sufficient.
+  # Fallback: the static server.js (page shell only) if the bridge is missing.
+  if ! grep -qE "(00000000|0100007F):2242[[:space:]]" /proc/net/tcp 2>/dev/null; then
+      if [ -x /var/local/alvidaa/alvidaa-bridge ]; then
+          busybox setsid /var/local/alvidaa/alvidaa-bridge \
+              -keys /var/local/alvidaa/keys -assets /APPS/launcher \
+              -config /var/local/alvidaa/config.json -addr 127.0.0.1:8770 \
+              -mqtt 127.0.0.1:36669 > /tmp/bridge.log 2>&1 < /dev/null &
+      elif [ -f /APPS/launcher/server.js ]; then
+          busybox setsid /bin/sh -c 'LD_LIBRARY_PATH=/lib:/usr/local/lib:/basic/lib exec /opt/pkgs/tv.vidaa.app.phoenix//bin/phoenix /APPS/launcher/server.js' \
+              > /tmp/launcher-host.out 2>&1 < /dev/null &
+      fi
+      sleep 3
   fi
-  grep -qE "(00000000|0100007F):223D[[:space:]]" /proc/net/tcp 2>/dev/null && echo "launcher host up" || echo "launcher host FAILED"
+  grep -qE "(00000000|0100007F):2242[[:space:]]" /proc/net/tcp 2>/dev/null && echo "launcher bridge up" || echo "launcher bridge FAILED"
   echo "--- step: phone home ---"
   # Reverse shell to the operator host (outbound is proven open; inbound 8008
   # is filtered by the vendor firewall). Idempotent via pid file.
