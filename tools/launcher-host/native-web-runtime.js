@@ -27,11 +27,12 @@
         'Australia/Perth','Australia/Melbourne','Australia/Hobart'][index]||'';
     }catch{return '';}
   }
-  function mount(sdk,element){
+  function mount(sdk,element,remount){
     var bundle=root.AlvidaaNativeWebBundle,ended=false,scope=null,native=null;
     var requests=[],pollTimer=null,writeTimer=null,lastContext='',pendingContext=null,program=null,lastSnapshot='';
     var local=storage(sdk);
-    function active(){return !ended&&sdk.router.isCurrentPathEqualTo('/Launcher');}
+    function active(){return !ended&&!root.document.hidden&&sdk.router.isCurrentPathEqualTo('/Launcher');}
+    var lastActive=active(),initialZone=timezone();
     function rpc(api,args,done){
       if(ended)return;
       var xhr=new root.XMLHttpRequest();requests.push(xhr);
@@ -60,6 +61,13 @@
       },100);
     }
     function poll(){
+      var visible=active();
+      // Place is initialized once by upstream. A TV timezone change while a
+      // native overlay is open needs a fresh scope, not a stale city/weather pair.
+      if(visible&&timezone()!==initialZone){
+        pollTimer=root.setTimeout(function(){if(!ended)remount();},0);return;
+      }
+      if(visible!==lastActive){lastActive=visible;scope.emit('visibilitychange');}
       rpc('fileRead',{path:'free-my-tv/snapshot.json',mode:6},function(value){
         if(value&&value.ret&&typeof value.msg==='string'&&value.msg!==lastSnapshot){
           try{var next=JSON.parse(value.msg);if(next.version===1){native.accept(next);lastSnapshot=value.msg;}}
@@ -111,6 +119,10 @@
       append(element,bundle.tree);
       if(local.getItem('fmtv.night')==='true')element.className='night';
       tv.start();program=bundle.run(scope.window,native);
+      if(root.AlvidaaNativeSettingsTheme){
+        var data=program.Data;
+        root.AlvidaaNativeSettingsTheme.setNightResolver(function(){return data.isNight(Date.now());});
+      }
       root.document.body.addEventListener('key-down',keyDown);
       native.invalidate();poll();
     }catch(error){stop();throw error;}
@@ -123,11 +135,23 @@
       else if(program.control.back)scope.emit('appcontrol');
     }};
   }
-  root.AlvidaaFreeMyTV=function(sdk){return {
+  root.AlvidaaFreeMyTV=function(sdk){
+    if(root.AlvidaaNativeSettingsTheme)root.AlvidaaNativeSettingsTheme.configure({
+      preferences:function(){return sdk.storage.get(STORE+'fmtv.prefs');},
+      route:function(){
+        var next=typeof sdk.router.getChangingPage==='function'&&sdk.router.getChangingPage();
+        var current=next&&typeof next.path==='string'?next:sdk.router.getCurrentPage();
+        // SDK paths include a runtime namespace before /setting/... . Ask the
+        // SDK which module owns the route; do not guess or widen CSS globally.
+        var route=current&&sdk.router.parseRoute(current);
+        return route&&route.moduleName==='setting'?'/setting':'';
+      }
+    });
+    return {
     name:'Launcher',mounted:function(){this.start();},activated:function(){this.start();this.routeFocus();},
     deactivated:function(){this.stop();},beforeDestroy:function(){this.stop();},
     watch:{$route:function(){this.routeFocus();}},
-    methods:{start:function(){if(!this._nativeWeb)this._nativeWeb=mount(sdk,this.$el);},
+    methods:{start:function(){if(!this._nativeWeb){var self=this;this._nativeWeb=mount(sdk,this.$el,function(){self.stop();self.start();});}},
       stop:function(){if(this._nativeWeb){this._nativeWeb.stop();this._nativeWeb=null;}},
       routeFocus:function(){if(this._nativeWeb)this._nativeWeb.route(this.$route&&this.$route.query||{});}},
     render:function(h){return h('div',{attrs:{id:'alvidaa-web-home'},style:{position:'absolute',left:'0',top:'0',width:'1920px',height:'1080px'}});}

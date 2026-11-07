@@ -81,16 +81,29 @@ function createMedia(options){
   const bytes=fs.readFileSync(file),value=await prepare('icon:'+digest(bytes),bytes,'icon');
   if(!stopped)media[source]=value;
  }
+ function cachedBytes(name){
+  try{
+   if(!/^[a-f0-9]{64}$/.test(name))return null;
+   const metadata=path.join(directory,name+'-meta.json'),st=fs.lstatSync(metadata);
+   if(!st.isFile()||st.size>16384)return null;
+   const saved=JSON.parse(fs.readFileSync(metadata,'utf8'));
+   if(!['.png','.jpg'].includes(saved.format))return null;
+   const file=path.join(directory,name+'-raw'+saved.format),raw=fs.lstatSync(file);
+   if(!raw.isFile()||raw.size>8*1024*1024)return null;
+   const bytes=fs.readFileSync(file);return saved.rawHash===digest(bytes)?bytes:null;
+  }catch{return null;}
+ }
  async function photo(file,size){
   if(stopped||!file)return;
   const url=photoURL(file,size),name=digest(processor+'\n'+url);
-  let bytes;
-  try{
-   const saved=JSON.parse(fs.readFileSync(path.join(directory,name+'-meta.json'),'utf8'));
-   if(!['.png','.jpg'].includes(saved.format))throw Error('Invalid cached image format');
-   bytes=fs.readFileSync(path.join(directory,name+'-raw'+saved.format));
-   if(saved.rawHash!==digest(bytes))bytes=null;
-  }catch{bytes=null;}
+  let bytes=cachedBytes(name);
+  // Processor upgrades must remain usable offline. Reuse only a bounded,
+  // hash-checked raw image from the previous snapshot's exact local cache URI.
+  const previous=options.previousImages&&options.previousImages[size+':'+file];
+  if(!bytes&&typeof previous==='string'&&previous.startsWith(base)){
+   const match=/^([a-f0-9]{64})-raw\.(png|jpg)$/.exec(previous.slice(base.length));
+   if(match)bytes=cachedBytes(match[1]);
+  }
   if(!bytes)bytes=await (options.download||download)(url);
   const value=await prepare(url,bytes,'photo');if(!stopped)images[size+':'+file]=value.src;
  }

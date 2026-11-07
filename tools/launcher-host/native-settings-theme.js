@@ -6,35 +6,75 @@
     var registry=host._V_M_,descriptor=registry&&Object.getOwnPropertyDescriptor(registry,'setting');
     if(!registry||(descriptor&&(!descriptor.configurable||!descriptor.writable||descriptor.get||descriptor.set)))return null;
     var current=descriptor&&descriptor.value,wrapped=null,original=null,entries=[],routes=[],disposed=false;
-    var prefix='.settingContent.fmtv-advanced.fmtv-advanced';
+    // Native high-contrast mode wins over this presentation layer immediately.
+    var prefix='body.v-normal-contrast .fmtv-advanced.fmtv-advanced.fmtv-advanced',context={},nightResolver=null;
+    function owned(path){return typeof path==='string'&&(/^\/setting(?:\/|$)/i.test(path)||path.length>0&&path.charAt(0)!=='/');}
+    function active(){try{return !context.route||/^\/setting(?:\/|$)/i.test(context.route()||'');}catch{return false;}}
+    function night(){
+      try{
+        var raw=context.preferences&&context.preferences(),prefs=typeof raw==='string'&&raw.length<=65536?JSON.parse(raw):raw;
+        if(prefs&&prefs.theme==='light')return false;if(prefs&&prefs.theme==='dark')return true;
+        if(nightResolver)return !!nightResolver();
+      }catch{/* Preserve native Settings even when optional preferences are unavailable. */}
+      return true;
+    }
     function corners(radius){return ['top-left','top-right','bottom-right','bottom-left'].map(function(c){return 'border-'+c+'-radius:'+radius+';';}).join('');}
-    var css=prefix+'{background:linear-gradient(135deg,#1c2228,#15191e)!important;color:#f5f5f7;}'+
-      prefix+' .firstLevelFrame{background:rgba(255,255,255,.035)!important;}'+
-      prefix+' .highLevelContent{background:transparent!important;}'+
+    var semantic=':not([class*="error"]):not([class*="warn"]):not([style*="color"])';
+    var css=prefix+'{color:#f5f5f7;}'+
+      // Color the native surfaces, not their transparent parent. Native menu
+      // opacity classes therefore still reveal the content behind the panel.
+      prefix+'.v-bg1,'+prefix+' .v-bg1{background:linear-gradient(135deg,#1c2228,#15191e)!important;}'+
+      prefix+' .firstLevelFrame{background:linear-gradient(135deg,#242c33,#1c232a)!important;}'+
       prefix+' .highLevelFrame:before,'+prefix+' .highLevelFrame:after{background-color:rgba(255,255,255,.09)!important;}'+
       prefix+' .edgeshadow{box-shadow:none!important;}'+
       ['.firstText','.highLevelTitle','.item__txt','.s_item_title','.s_double_title_2','.explainTxt','.esntext'].map(function(selector){return prefix+' '+selector+'{font-family:"FMTVWeb32",sans-serif!important;}';}).join('')+
       prefix+' .highLevelTitle{font-weight:700;letter-spacing:-.01em;}'+
       prefix+' #v-focus{background:rgba(255,255,255,.11)!important;box-shadow:inset 0 0 0 2px rgba(255,255,255,.28)!important;'+corners('18px')+'}'+
-      prefix+' .v-i-selected{color:#31d5b2;}';
+      prefix+' .v-i-selected'+semantic+'{color:#31d5b2;}';
+    var light=prefix+'.fmtv-light';
+    var neutral=':not([class*="v-c-"])'+semantic;
+    css+=light+'{color:#202428;}'+
+      light+' .firstLevelFrame{background:linear-gradient(135deg,#edf1f5,#e4eaf0)!important;}'+
+      light+' .highLevelFrame:before,'+light+' .highLevelFrame:after{background-color:rgba(0,0,0,.09)!important;}'+
+      light+' #v-focus{background:rgba(0,0,0,.06)!important;box-shadow:inset 0 0 0 2px rgba(0,0,0,.22)!important;}'+
+      // Native BUI controls carry their own neutral color/background classes;
+      // inheriting only from the page leaves white text on a light surface.
+      // Keep semantic error/warning classes and native disabled opacity intact.
+      light+'.v-c1'+neutral+','+light+' .v-c1'+neutral+'{color:#202428!important;}'+
+      light+'.v-c2'+neutral+','+light+' .v-c2'+neutral+'{color:#4d565e!important;}'+
+      light+'.v-c3'+neutral+','+light+' .v-c3'+neutral+'{color:#626d75!important;}'+
+      light+'.v-bg1,'+light+' .v-bg1{background:linear-gradient(135deg,#f7f9fc,#edf1f5)!important;}'+
+      light+'.v-bg2,'+light+' .v-bg2{background:#e7ebef!important;}'+
+      light+'.v-bg3,'+light+' .v-bg3{background:#dde3e9!important;}'+
+      light+' .v-i-selected'+semantic+','+light+' .v-c-highlight'+semantic+'{color:#0d745f!important;}';
     function ensureStyle(){
       if(disposed||host.document.getElementById('alvidaa-settings-style'))return;
       var style=host.document.createElement('style');style.id='alvidaa-settings-style';
       style.textContent=(!host.document.getElementById('alvidaa-web-styles')&&host.AlvidaaNativeWebBundle?host.AlvidaaNativeWebBundle.fontCSS:'')+css;
       host.document.head.appendChild(style);
     }
+    function writable(object,key){var d=Object.getOwnPropertyDescriptor(object,key);return d?d.writable===true:Object.isExtensible(object);}
+    function clearClass(vnode){
+      var own=vnode&&vnode._alvidaaSettingsClass;
+      if(own&&vnode.data&&vnode.data.class===own.after&&writable(vnode.data,'class'))vnode.data.class=own.before;
+    }
     function decorate(component){
       if(disposed||!component)return component;
       if(component.default){decorate(component.default);return component;}
       var options=component.options||component;
-      if(typeof options.render!=='function'||entries.some(function(e){return e.options===options;}))return component;
-      var before=options.render;
+      if(typeof options.render!=='function'||!writable(options,'render')||entries.some(function(e){return e.options===options;}))return component;
+      var before=options.render,entry={options:options,before:before,after:null,node:null};
       function render(){
-        ensureStyle();var vnode=before.apply(this,arguments);
-        if(vnode){vnode.data=vnode.data||{};vnode.data.class=[vnode.data.class,'fmtv-advanced'];}
+        var vnode=before.apply(this,arguments);clearClass(vnode);entry.node=vnode;
+        if(vnode&&active()&&writable(vnode,'_alvidaaSettingsClass')&&
+          (vnode.data?writable(vnode.data,'class'):writable(vnode,'data'))){
+          ensureStyle();vnode.data=vnode.data||{};
+          var classes=[vnode.data.class,'fmtv-advanced',{'fmtv-light':!night()}];
+          vnode._alvidaaSettingsClass={before:vnode.data.class,after:classes};vnode.data.class=classes;
+        }
         return vnode;
       }
-      options.render=render;entries.push({options:options,before:before,after:render});
+      options.render=render;entry.after=render;entries.push(entry);
       if(options._Ctor)Object.keys(options._Ctor).forEach(function(key){decorate(options._Ctor[key]);});
       return component;
     }
@@ -44,16 +84,21 @@
       original=factory;
       wrapped=function(){
         var stock=factory.apply(this,arguments);
-        (stock&&stock.route||[]).forEach(function(route){
-          if(route.path!=='/setting/settings'||routes.some(function(e){return e.route===route;}))return;
+        function visit(route){
+          if(!route||!owned(route.path))return;
+          (route.children||[]).forEach(visit);
+          if(routes.some(function(e){return e.route===route;})||!writable(route,'component'))return;
           var before=route.component;
           function load(){
             var value=before.apply(this,arguments);
             return value&&typeof value.then==='function'?value.then(decorate):decorate(value);
           }
-          if(typeof before==='function'&&!before.options){route.component=load;routes.push({route:route,before:before,after:load});}
-          else decorate(before);
-        });
+          if(typeof before==='function'&&!before.options){
+            if(before.resolved)decorate(before.resolved);
+            route.component=load;routes.push({route:route,before:before,after:load});
+          }else decorate(before);
+        }
+        (stock&&stock.route||[]).forEach(visit);
         return stock;
       };
       return wrapped;
@@ -68,6 +113,9 @@
       // Resolve that same local module and decorate its exported component;
       // this mounts nothing and leaves all route guards in place.
       routes.forEach(function(entry){
+        // Do not eagerly load every native dialog just to style it. New routes
+        // are decorated on demand; already resolved constructors are covered above.
+        if(entry.route.path!=='/setting/settings')return;
         try{
           var value=entry.before();
           if(value&&typeof value.then==='function')value.then(decorate,function(){});
@@ -75,10 +123,11 @@
         }catch{/* Keep native routing available; a later load can retry. */}
       });
     }
-    return {remove:function(){
-      if(disposed)return;disposed=true;
-      routes.forEach(function(e){if(e.route.component===e.after)e.route.component=e.before;});
-      entries.forEach(function(e){if(e.options.render===e.after)e.options.render=e.before;});
+    return {configure:function(value){if(!disposed)context=value||{};},
+      setNightResolver:function(value){if(!disposed)nightResolver=value;},remove:function(){
+      if(disposed)return;disposed=true;context={};nightResolver=null;
+      routes.forEach(function(e){if(e.route.component===e.after&&writable(e.route,'component'))e.route.component=e.before;});
+      entries.forEach(function(e){clearClass(e.node);if(e.options.render===e.after&&writable(e.options,'render'))e.options.render=e.before;});
       var own=Object.getOwnPropertyDescriptor(registry,'setting');
       if(own&&own.get===get){
         if(descriptor)Object.defineProperty(registry,'setting',{configurable:descriptor.configurable,enumerable:descriptor.enumerable,writable:descriptor.writable,value:current});

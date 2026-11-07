@@ -94,8 +94,9 @@ are **not** counts of controls/screens visible on this model.
 - Public settings entry: `sdk.me.req('setting').open('settings', ...)`.
 - Original entry helper checks kids mode and resolves requested setting paths,
   including disabled/invisible entries. Preserve it.
-- Main route: `/setting/settings`; its renderer loads chunk `2842`, module
-  `lnK6`.
+- Main route registration: `/setting/settings`; the live SDK exposed
+  `/*/setting/settings`. Resolve module identity through `sdk.router.parseRoute`,
+  not a guessed path prefix. Its renderer loads chunk `2842`, module `lnK6`.
 - That component owns `settingData`, `settingStack`, `firstLevelIdx` and
   `curLevel`, plus original focus, navigation, energy-consumption confirmation,
   promise-based enter handlers and child initialization.
@@ -147,18 +148,30 @@ the input drawer and upstream Home Settings. A passive capture also shows the
 movie-art screensaver and clock. See [runtime evidence](../models/55A7KAU/V0000.09.09O.P1015/findings/16-web-runtime-and-feed-cache.md).
 Credentials remain in private `server/keys/` storage, not browser bundles.
 
-The presentation-only native settings skin has been exercised on the main panel
-and Connection submenu. That does not prove styling or behavior of every
-specialized dialog, restriction, PIN flow or accessibility setting.
+The presentation-only native settings skin has been exercised on the main panel,
+Connection and Network views; real-device tests caught namespaced-route and
+light-color override bugs. All skin selectors now yield to native high contrast,
+and native opacity remains on the original surfaces. This does not prove every
+final light submenu, specialized dialog, restriction, PIN or accessibility path.
 
 The on-TV worker and isolated boot entry have been tested, including duplicate
 starts and install → exact restore → reinstall of the boot fragment. Autostart
 is configured; **cold boot is not yet verified**. See [lifecycle evidence](../models/55A7KAU/V0000.09.09O.P1015/findings/17-native-feed-lifecycle.md).
-A deterministic private release packager now retains root ownership, scoped
-permissions and file hashes while excluding credential paths.
+A deterministic private release packager retains root ownership, scoped
+permissions and file hashes while excluding credential paths. The new root-local
+upgrade/rollback/teardown coordinator has fault-injection and package tests but
+has **not** been exercised on the TV.
 
-Native/Go tests and repository checks pass. Preference migration and independent
-storage are covered by adapter tests, not yet by complete on-device persistence
-acceptance. Data-bearing reference comparisons, complete native-feature coverage,
-physical power/voice/audible-accessibility acceptance remain release gates.
+Populated desktop comparisons now cover recommendations, Shows, weather/prices
+and a deterministic screensaver; the latter matches exactly in that fixture.
+Canvas-compatible thumbnail processing was measured on ARM within its timeout.
+The launcher preference was restored and its exact original bytes hash-verified.
+See [completion evidence](../models/55A7KAU/V0000.09.09O.P1015/findings/18-web-port-completion.md)
+for measurements, the last deployed hash, and the separate legacy reverse-shell
+bootstrap risk. Desktop results do not establish Cobalt or whole-platform parity.
+
+Full device coverage, release lifecycle trials, persistence, cold boot/standby,
+voice/microphone, audible accessibility, playback/blocklist collateral and
+subjective acceptance remain release gates. No further TV access was made after
+the operator requested offline work.
 Publication of this trial does not establish completion. **This is not yet a verified perfect port.**

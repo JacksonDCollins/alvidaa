@@ -95,11 +95,20 @@
         var info=meta(uri);if(!info||!local(info.thumb))return;
         node.style.backgroundImage='url("'+info.thumb+'")';node.style.backgroundSize='100% 100%';
       },
-      image:function(path,size){var uri=snapshot.images&&snapshot.images[size+':'+path];return local(uri)?uri:'';},
+      image:function(path,size){
+        // Original artwork can exceed the decoder's safety bound. Use an
+        // already-prepared rendition of the same image instead of a blank saver.
+        var sizes=[size,'w1280','w780','w500','w300','original'];
+        for(var i=0;i<sizes.length;i++){
+          var uri=snapshot.images&&snapshot.images[sizes[i]+':'+path];if(local(uri))return uri;
+        }
+        return '';
+      },
       context:options.context,attach:function(value){api=value;},invalidate:invalidate,
       accept:function(next){
         if(stopped||!next||next.version!==1)return;
-        var mediaChanged=JSON.stringify(snapshot.media)!==JSON.stringify(next.media);
+        var mediaChanged=JSON.stringify(snapshot.media)!==JSON.stringify(next.media)||
+          JSON.stringify(snapshot.images)!==JSON.stringify(next.images);
         snapshot=next;
         if(api)api.Data.nativeSnapshot(next.cache||{},next.error||'',next.keyConfigured);
         if(mediaChanged&&native.refreshMedia)native.refreshMedia();

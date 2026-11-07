@@ -36,7 +36,7 @@ class PackageTests(unittest.TestCase):
             helper.write_bytes(binary)
 
             def build_candidate(arguments, **_kwargs):
-                Path(arguments[-1]).write_bytes(b"synthetic candidate; no vendor code")
+                Path(arguments[-1]).write_bytes(b"/* ALVIDAA_FREE_MY_TV_NATIVE_V1 ALVIDAA_FREE_MY_TV_WEB_PARITY_V2 synthetic fixture */")
 
             with patch.object(PACKAGE, "PRIVATE", root), patch.object(PACKAGE.subprocess, "run", build_candidate):
                 first, second = root / "a.tar.gz", root / "b.tar.gz"
@@ -60,6 +60,23 @@ class PackageTests(unittest.TestCase):
                         data = stream.read()
                         self.assertEqual(len(data), entry["size"])
                         self.assertEqual(hashlib.sha256(data).hexdigest(), entry["sha256"])
+                    stage = root / "stage"
+                    stage.mkdir(mode=0o700)
+                    for member in members:
+                        if not member.isfile():
+                            continue
+                        target = stage / member.name
+                        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                        stream = archive.extractfile(member)
+                        if stream is None:
+                            self.fail("Expected regular release member")
+                        target.write_bytes(stream.read())
+                        target.chmod(member.mode)
+            verified = PACKAGE.subprocess.run(
+                ["node", str(stage / "runtime/native-web-release.cjs"), "verify", str(stage)],
+                check=True, capture_output=True, text=True,
+            )
+            self.assertEqual(json.loads(verified.stdout)["candidate"], receipt["candidate"])
 
     def test_manifest_escape_and_symlink_are_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:

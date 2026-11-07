@@ -12,6 +12,13 @@ test('compiles actual upstream presentation with isolated IDs and a safe static 
  assert.ok(p.css.includes('[data-fmtv-vector]'));assert.ok(!p.css.includes("font-family: 'Inter'"));
  assert.ok(!p.source.includes('KEY.slice(-6)'));assert.ok(p.source.includes('st.zone === Z.APPS'));
 });
+test('the autonomous web screensaver cannot start under another native route',()=>{
+ const source=buildProgram().source,start=source.indexOf('  function showSaver() {'),end=source.indexOf('  function hideSaver()',start);
+ assert.ok(start>=0&&end>start);
+ const saver=new vm.Script(source.slice(start,end)+'\nshowSaver();');
+ assert.doesNotThrow(()=>saver.runInNewContext({document:{hidden:true}}));
+ assert.throws(()=>saver.runInNewContext({document:{hidden:false}}),/saverPhotos/);
+});
 test('CSS scoping preserves image class selectors and root clock states',()=>{
  const css=scopeCSS('.card .img {height: 500px;} .card img {width: 100%;} .no-picks #clock {display:block;}');
  assert.ok(css.includes('#alvidaa-web-home .card .img{height: 500px;}'));

@@ -100,6 +100,7 @@ function buildProgram(){
     ['  function sym(name, parent, size) {','  function sym(name, parent, size) {\n    if (Native) return Native.symbol(name, parent, size);'],
     ['  function coin(i, parent) {','  function coin(i, parent) {\n    if (Native) return Native.coin(i, parent);'],
     ['  function lift(img) {','  function lift(img) {\n    if (Native) return Native.lift(img);'],
+    ['  function showSaver() {','  function showSaver() {\n    if (document.hidden) return;'],
     ["      var canvas = $(next), ctx = canvas.getContext('2d');\n      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);",
      "      var canvas = $(next);\n      Native.backdrop(canvas, url);"],
     ["      w.id = 'weather';","      w.id = '"+PREFIX+"weather';"],

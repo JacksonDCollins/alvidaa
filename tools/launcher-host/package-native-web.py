@@ -18,7 +18,7 @@ REVISION = "f2d984c51edca1544e39f2d44cdf86b75b0b6703"
 RUNTIME = (
     "native-feed-worker.cjs", "native-feed-engine.cjs", "native-feed-http.cjs",
     "native-feed-images.cjs", "native-web-program.cjs", "native-web-locale.cjs",
-    "native-web-service.cjs", "native-web-boot.cjs", "native-feed-boot.sh",
+    "native-web-service.cjs", "native-web-boot.cjs", "native-web-release.cjs", "native-feed-boot.sh",
     "native-home.cjs", "native-trial.cjs", "native-update.cjs",
     "stock-ui-restart.cjs", "retire-native-bridge.cjs",
 )

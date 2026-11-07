@@ -82,6 +82,37 @@ func TestTransparentLogoAndResize(t *testing.T) {
 		t.Fatal("wrong backdrop dimensions")
 	}
 }
+func TestCanvasThumbnailPrefiltersSharpPhotoBoundary(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(0, 0, 640, 360))
+	for y := 0; y < 360; y++ {
+		for x := 0; x < 640; x++ {
+			img.SetNRGBA(x, y, color.NRGBA{uint8((188 + x*96/640) % 256), uint8((244 + y*96/360) % 256), 64, 255})
+		}
+	}
+	thumb := canvasThumbnail(img, 48, 27)
+	// Captured from the pristine upstream canvas using the identical synthetic
+	// image. Point-only bilinear sampling wrongly makes boundary row 3 black.
+	for y, green := range []uint8{244, 248, 251, 108, 3} {
+		if got := thumb.NRGBAAt(0, y).G; got != green {
+			t.Fatalf("row %d green=%d, reference=%d", y, got, green)
+		}
+	}
+}
+
+func TestCanvasThumbnailPreservesOddExtentAndPremultipliedAlpha(t *testing.T) {
+	img := image.NewNRGBA(image.Rect(3, 5, 8, 10))
+	for y := 5; y < 10; y++ {
+		for x := 3; x < 8; x++ {
+			img.SetNRGBA(x, y, color.NRGBA{255, 0, 0, 0})
+		}
+	}
+	img.SetNRGBA(7, 9, color.NRGBA{0, 255, 0, 255})
+	thumb := canvasThumbnail(img, 1, 1).NRGBAAt(0, 0)
+	if thumb.A == 0 || thumb.R != 0 || thumb.G < 250 {
+		t.Fatalf("odd edge or alpha lost: %+v", thumb)
+	}
+}
+
 func TestProcessWritesPublicAtomicThumbnailAndRejectsInvalidInput(t *testing.T) {
 	dir := t.TempDir()
 	input := filepath.Join(dir, "input.png")

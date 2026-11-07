@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	_ "image/jpeg"
 	"image/png"
 	"io"
@@ -38,6 +39,14 @@ func byteValue(v float64) uint8          { return uint8(math.RoundToEven(clamp(v
 
 // Pixel-center bilinear resize in premultiplied alpha, then return straight RGBA.
 func resize(src image.Image, width, height int) *image.NRGBA {
+	return resample(src, width, height, false)
+}
+
+func resample(src image.Image, width, height int, canvas bool) *image.NRGBA {
+	toByte := byteValue
+	if canvas {
+		toByte = func(v float64) uint8 { return uint8(clamp(math.Floor(v), 0, 255)) }
+	}
 	out := image.NewNRGBA(image.Rect(0, 0, width, height))
 	b := src.Bounds()
 	for y := 0; y < height; y++ {
@@ -46,6 +55,9 @@ func resize(src image.Image, width, height int) *image.NRGBA {
 			fy := clamp((float64(y)+0.5)*float64(b.Dy())/float64(height)-0.5, 0, float64(b.Dy()-1))
 			x0, y0 := int(math.Floor(fx)), int(math.Floor(fy))
 			dx, dy := fx-float64(x0), fy-float64(y0)
+			if canvas {
+				dx, dy = math.Floor(dx*16)/16, math.Floor(dy*16)/16
+			}
 			var channels [4]float64
 			for j := 0; j < 2; j++ {
 				for i := 0; i < 2; i++ {
@@ -66,17 +78,66 @@ func resize(src image.Image, width, height int) *image.NRGBA {
 				}
 			}
 			a := channels[3]
-			p := color.NRGBA{A: byteValue(a / 257)}
+			p := color.NRGBA{A: toByte(a / 257)}
 			if a > 0 {
-				p.R = byteValue(channels[0] * 255 / a)
-				p.G = byteValue(channels[1] * 255 / a)
-				p.B = byteValue(channels[2] * 255 / a)
+				p.R = toByte(channels[0] * 255 / a)
+				p.G = toByte(channels[1] * 255 / a)
+				p.B = toByte(channels[2] * 255 / a)
 			}
 			out.SetNRGBA(x, y, p)
 		}
 	}
 	return out
 }
+
+// Match the reference canvas's mip-prefiltered, fixed-point bilinear backdrop.
+// A single point sample aliases sharp boundaries when shrinking a photo to 48x27.
+func canvasThumbnail(src image.Image, width, height int) *image.NRGBA {
+	for src.Bounds().Dx()/2 >= width && src.Bounds().Dy()/2 >= height {
+		b := src.Bounds()
+		next := image.NewRGBA(image.Rect(0, 0, b.Dx()/2, b.Dy()/2))
+		wx, wy := []uint32{1, 1}, []uint32{1, 1}
+		if b.Dx()%2 != 0 {
+			wx = []uint32{1, 2, 1}
+		}
+		if b.Dy()%2 != 0 {
+			wy = []uint32{1, 2, 1}
+		}
+		shift := uint(2)
+		if len(wx) == 3 {
+			shift++
+		}
+		if len(wy) == 3 {
+			shift++
+		}
+		// Convert only the required rows. draw's JPEG/RGBA fast paths avoid
+		// millions of boxed Color allocations on ARM without allocating a
+		// second full-resolution RGBA image (up to 64 MB).
+		rows := image.NewRGBA(image.Rect(0, 0, b.Dx(), len(wy)))
+		for y := 0; y < next.Bounds().Dy(); y++ {
+			draw.Draw(rows, rows.Bounds(), src, image.Pt(b.Min.X, b.Min.Y+y*2), draw.Src)
+			for x := 0; x < next.Bounds().Dx(); x++ {
+				var sums [4]uint32
+				for j, yWeight := range wy {
+					for i, xWeight := range wx {
+						at := j*rows.Stride + (x*2+i)*4
+						weight := xWeight * yWeight
+						for channel := 0; channel < 4; channel++ {
+							sums[channel] += uint32(rows.Pix[at+channel]) * weight
+						}
+					}
+				}
+				at := y*next.Stride + x*4
+				for channel := 0; channel < 4; channel++ {
+					next.Pix[at+channel] = uint8(sums[channel] >> shift)
+				}
+			}
+		}
+		src = next
+	}
+	return resample(src, width, height, true)
+}
+
 func lift(src image.Image) (*image.NRGBA, *Logo) {
 	b := src.Bounds()
 	factor := math.Min(1, 240/float64(max(b.Dx(), b.Dy())))
@@ -238,7 +299,7 @@ func process(input, prefix, mode string) (Result, error) {
 	}
 	result.Width, result.Height = cfg.Width, cfg.Height
 	if mode == "photo" {
-		err = save(prefix+"-thumb.png", resize(src, 48, 27))
+		err = save(prefix+"-thumb.png", canvasThumbnail(src, 48, 27))
 	} else {
 		var crop *image.NRGBA
 		crop, result.Lift = lift(src)

@@ -14,6 +14,7 @@ function readToken(file){
  if(!resolved.includes(path.sep+'server'+path.sep+'keys'+path.sep))throw Error('Credentials must remain in server/keys');
  const stat=fs.lstatSync(file);if(!stat.isFile()||(stat.mode&0o077)!==0)throw Error('Private credential permissions required');
  const value=readJSON(file,16384).tmdb_token;
+ if(typeof value==='string'&&!value.trim())return ''; // Explicit offline/no-TMDB configuration.
  if(typeof value!=='string'||value.length>4096||!value.trim().startsWith('eyJ')||/[\r\n]/.test(value.trim()))throw Error('A private TMDB read token is required');
  return value.trim();
 }
@@ -46,7 +47,9 @@ function start(options){
   imageBusy=true;imageAgain=false;
   const owner=media,current=engine,currentContext=context;
   try{
-   const value=await owner.update(currentContext,current.snapshot().cache);
+   const state=current.snapshot();
+   const cache=state.keyConfigured?state.cache:{...state.cache,'fmtv.recs':null};
+   const value=await owner.update(currentContext,cache);
    if(!stopped&&media===owner&&value){render=value;owner.collect();schedule();}
   }catch{/* Retain previous usable image mappings on processing failures. */}
   finally{imageBusy=false;if(imageAgain&&!stopped)void images();}
@@ -75,7 +78,7 @@ function start(options){
     let owner;
     try{
      owner=createMedia({directory:options.mediaDirectory||path.join(directory,'media'),iconRoot:options.iconRoot,processor:options.processor,
-      uriBase:'file:///hisenseUI/var/local/free-my-tv/media/',onChange:value=>{if(!stopped&&media===owner){render=value;schedule();}}});
+      previousImages:render.images,uriBase:'file:///hisenseUI/var/local/free-my-tv/media/',onChange:value=>{if(!stopped&&media===owner){render=value;schedule();}}});
     }catch(error){replacement.stop();throw error;}
     if(engine)engine.stop();if(media)media.stop();
     // Only a zone from the pinned public timezone catalogue reaches TZ. This

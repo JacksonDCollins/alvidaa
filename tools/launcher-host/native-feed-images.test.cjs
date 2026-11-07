@@ -21,6 +21,7 @@ test('worker only reads bounded JSON and a mode-private server/keys token',t=>{
  const keys=path.join(dir,'server/keys');fs.mkdirSync(keys,{recursive:true});const file=path.join(keys,'feed.json');
  fs.writeFileSync(file,JSON.stringify({tmdb_token:'eyJ.fake-test-token'}),{mode:0o600});
  assert.equal(readToken(file),'eyJ.fake-test-token');assert.throws(()=>readJSON(file,1));
+ fs.writeFileSync(file,JSON.stringify({tmdb_token:''}));assert.equal(readToken(file),'');
  fs.chmodSync(file,0o644);assert.throws(()=>readToken(file),/permissions/);
  const link=path.join(keys,'link.json');fs.symlinkSync(file,link);assert.throws(()=>readToken(link));
 });
@@ -54,6 +55,15 @@ test('native image cache prepares local assets and repairs missing generated fil
  const second=await cache.update(context,data);assert.equal(second.imageFailures,0);assert.equal(requests,4);
  assert.ok(fs.existsSync(path.join(dir,'media',path.basename(photo.thumb))));
  cache.collect();
+ // A changed helper must reprocess cached raw bytes without contacting TMDB.
+ const upgradedProcessor=path.join(dir,'new-helper');
+ fs.copyFileSync(processor,upgradedProcessor);fs.appendFileSync(upgradedProcessor,'\n');fs.chmodSync(upgradedProcessor,0o755);
+ const upgraded=createMedia({directory:path.join(dir,'media'),iconRoot:icons,processor:upgradedProcessor,
+  previousImages:second.images,uriBase:'file:///hisenseUI/var/local/free-my-tv/media/',download:async()=>{throw Error('Offline fixture');}});
+ t.after(()=>upgraded.stop());
+ const third=await upgraded.update(context,data);
+ assert.equal(third.imageFailures,0);assert.notEqual(third.images['original:/test.jpg'],second.images['original:/test.jpg']);
+ assert.equal(requests,4);
 });
 test('worker publishes locally, retains a good snapshot on broken IPC, and cleans its PID',{skip:!processor},async t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fmtv-worker-test-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
