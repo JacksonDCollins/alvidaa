@@ -90,6 +90,22 @@ further full-release updates may correctly refuse the 64 MiB reserve plus
 backup budget. Do not delete history or lower the reserve to bypass that guard.
 
 Root/SSH, credentials, origin storage and hardware settings remain protected.
-Cold boot, physical voice/audio/playback, actual accessibility-mode transitions
-and subjective acceptance still require the operator. The legacy reverse-shell
-recovery channel remains unchanged pending independent cold-boot recovery proof.
+
+## Operator cold-boot acceptance
+
+After the requested wall-power cycle, the operator reported that the TV booted
+to Free My TV. A read-only SSH check independently confirmed a fresh uptime of
+64.99 seconds and working root-key authentication, without using the legacy
+reverse-shell channel or manually starting the feed.
+
+- Home, bootstrap and exact original preference hashes still matched those above.
+- Owned feed PID/group 2197 was running, selected and conflict-free.
+- 47 apps, Brisbane timezone, 96 image mappings and zero image failures.
+- Snapshot and context were freshly written (28 and 18 seconds old respectively),
+  rather than merely surviving as stale pre-boot files.
+
+This establishes autonomous Home startup, feed startup, preference persistence
+and independent SSH recovery for this tested cold boot. Physical voice/audio/
+playback, actual accessibility-mode transitions and subjective acceptance remain
+open. The legacy reverse-shell channel is still configured; its retirement is a
+separate guarded change, not an automatic consequence of this successful test.
