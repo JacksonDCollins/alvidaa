@@ -99,7 +99,16 @@ test('merged snapshots never resurrect persisted personal picks after disconnect
  const old={picks:[{id:1,app:'netflix'},{id:-2,app:'plex',source:'plex'}],stamp:'native:AU00000000000'};
  assert.deepEqual(JSON.parse(merge(JSON.stringify(old),[],true)).picks,[{id:1,app:'netflix'}]);
  assert.deepEqual(JSON.parse(merge(JSON.stringify(old),[],false)).picks,[]);
- assert.deepEqual(JSON.parse(merge('null',[{id:-3,app:'plex',source:'plex'}],false)).picks,[{id:-3,app:'plex',source:'plex'}]);
+ assert.deepEqual(JSON.parse(merge('null',[{id:-3,kind:'movie',app:'plex',source:'plex'}],false)).picks,[{id:-3,kind:'movie',app:'plex',source:'plex'}]);
+});
+test('canonical merging interleaves each trending kind before fresh titles and keeps the pool at 24',()=>{
+ const personal=[{id:-1,kind:'movie',source:'plex',app:'plex'},{id:-2,kind:'tv',source:'plex',app:'plex'}];
+ const base=Array.from({length:24},(_,i)=>({id:i+1,kind:i%2?'tv':'movie',app:'netflix',nativeTrending:true}));
+ const merged=JSON.parse(merge(JSON.stringify({picks:base,plexPoolVersion:1}),personal,true)).picks;
+ assert.equal(merged.length,24);assert.deepEqual(merged.slice(0,6).map(p=>p.id),[1,2,-1,-2,3,4]);assert.equal(merged.at(-1).id,22);
+ const uneven=[base[0],base[1],base[2],base[4],{...base[6],nativeTrending:false},{...base[7],nativeTrending:false}];
+ assert.deepEqual(JSON.parse(merge(JSON.stringify({picks:uneven,plexPoolVersion:1}),personal,true)).picks.map(p=>p.id),[1,2,-1,-2,3,5,7,8]);
+ assert.deepEqual(JSON.parse(merge(JSON.stringify({picks:[base[0],base[2]],plexPoolVersion:1}),[personal[1]],true)).picks.map(p=>p.id),[1,-2,3]);
 });
 test('sleeping servers have bounded metadata and artwork retries, not continuous polling',async t=>{
  let clock=0;const options={now:()=>clock},f=fixture(options);t.after(()=>f.client.stop());

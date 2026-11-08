@@ -153,9 +153,23 @@ function createPlex(config,options={}){
 function merge(cache,plexPicks,tmdbConfigured){
  let recs={};try{recs=JSON.parse(cache||'{}');}catch{/* No cached TMDB recommendations. */}
  if(!recs||typeof recs!=='object'||Array.isArray(recs))recs={};
- const base=tmdbConfigured&&Array.isArray(recs.picks)?recs.picks.filter(x=>x&&x.id>0&&x.source!=='plex'&&x.app!=='plex').slice(0,62):[];
- // Interleave personal library picks instead of replacing the public recommendations.
- for(let i=0;i<plexPicks.length;i++)base.splice(Math.min(1+i*2,base.length),0,plexPicks[i]);
- return JSON.stringify({...recs,picks:base});
+ const base=tmdbConfigured&&Array.isArray(recs.picks)?recs.picks.filter(x=>x&&x.id>0&&x.source!=='plex'&&x.app!=='plex').slice(0,24):[];
+ if(!plexPicks.length){
+  // A serialized mixed pool has dropped public tail entries at the cap. Refill
+  // on restart/account change rather than treating that shortened pool as fresh.
+  if(Array.isArray(recs.picks)&&recs.picks.some(p=>p&&(p.source==='plex'||p.app==='plex'||p.id<0))){recs.listAt=0;recs.stamp='';}
+  return JSON.stringify({...recs,picks:base});
+ }
+ // Canonical order: interleave Plex into each trending kind, alternate kinds,
+ // then fill with new releases. Old unannotated caches are refreshed by dataSource.
+ const hot=base.filter(p=>recs.plexPoolVersion!==1||p.nativeTrending),fresh=base.filter(p=>recs.plexPoolVersion===1&&!p.nativeTrending);
+ const kinds=['movie','tv'].map(kind=>{
+  const list=hot.filter(p=>p.kind===kind),personal=plexPicks.find(p=>p.kind===kind);
+  if(personal)list.splice(Math.min(1,list.length),0,personal);return list;
+ });
+ const out=[],seen=new Set();function add(p){if(!p||out.length>=24)return;const key=p.kind+':'+p.id;if(!seen.has(key)){seen.add(key);out.push(p);}}
+ for(let i=0;i<Math.max(kinds[0].length,kinds[1].length)&&out.length<24;i++){add(kinds[0][i]);add(kinds[1][i]);}
+ fresh.forEach(add);
+ return JSON.stringify({...recs,picks:out});
 }
 module.exports={configuration,serverOrigin,privateAddress,createPlex,merge,IMAGE};

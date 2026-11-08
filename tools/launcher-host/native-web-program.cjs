@@ -72,6 +72,11 @@ function dataSource(source){
   // Upstream persists a token suffix in its cache stamp. Do not copy even a
   // partial credential into browser-readable cache files.
   source=replaceOnce(source,"KEY.length + ':' + KEY.slice(-6) + ':' + REGION","'native:' + REGION");
+  // Preserve trending provenance so Plex joins that bucket before the 24-title cap.
+  source=replaceOnce(source,"  var cache = stored('recs') || {};","  var cache = stored('recs') || {}, plexPoolVersion = cache.plexPoolVersion || 0;\n  if (plexPoolVersion !== 1) { cache.listAt = 0; cache.stamp = ''; }");
+  source=replaceOnce(source,'{picks: picks, listAt: listAt, period: period, lang: listLang, stamp: stamp}','{picks: picks, listAt: listAt, period: period, lang: listLang, stamp: stamp, plexPoolVersion: plexPoolVersion}');
+  source=replaceOnce(source,'if (!de && p.app) hot[kind].push(p);','if (!de && p.app) { p.nativeTrending = true; hot[kind].push(p); }');
+  source=replaceOnce(source,'            picks = list;','            picks = list; plexPoolVersion = 1;');
   // Plex is a personal-library source, not TMDB's free Plex catalogue.
   source=replaceOnce(source,'  function appFor(key) {',`  function appFor(key) {
     if (key === 'plex') {

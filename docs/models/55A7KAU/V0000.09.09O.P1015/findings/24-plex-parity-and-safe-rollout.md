@@ -79,9 +79,56 @@ The staging directory is `/APPS/alvidaa-phonehome-retire-ef4ad527ce4c`.
 No reboot has been used to test startup; inspection proves the startup edit and
 fresh SSH proves the current recovery lane, not cold-boot acceptance.
 
+## First deployment, disable and exact rollback
+
+Release `2524b955d7d4bf320be937941d2d54b06783719ba78c5533d01bbc0b60cd625a`
+was installed through the coordinator, journal `web-releases/release-Se9dDY`.
+The automatic worker reported `ready`, two personal picks (movie/show), two
+available posters and zero image failures. Preferences remained unchanged.
+This establishes backend operation, not acceptance of clicking a visible card.
+The current hour's three public cards contained no personal pick: the original
+algorithm permits at most one Plex surprise, not a guaranteed Plex card every hour.
+
+Source comparison during acceptance exposed a remaining mismatch: the first
+adapter inserted personal picks into the already-built public pool, producing
+26 rather than 24 titles and a different order. The correction records trending
+provenance, interleaves Plex within each trending kind, alternates kinds, then
+fills with fresh titles up to 24. Legacy caches refresh their provenance; removing
+personal entries from a capped persisted pool also invalidates its freshness so
+public tail entries can be refilled. Pinned upstream files remain unchanged.
+
+A guarded private-config disable and owned-worker restart produced `disabled`,
+zero personal picks, zero advertised personal image references and an unchanged
+TMDB token. The release's independent controller then rolled back exactly to
+Home `e33a1ed19f07a7a072f79f54b68617087f34811ee2508de0534e2b1c61ac1393`.
+The exact pre-Plex private configuration was restored. A later SSH check confirmed
+the previous worker remained running/selected, the preference hash was unchanged,
+and the phonehome-free bootstrap remained `ef4ad527…`.
+
+## Additional rollback headroom and diagnostic traps
+
+The unused private runtime `assets/` staging tree had no direct references in
+261 inspected runtime/recovery scripts and JSON files. All 1,728 files matched
+the private verified release archive, totaling 44,739,003 bytes. Original paths,
+owners, modes and modification times were recorded privately before removal
+under the Home lock, Home/bootstrap hash guards and an open-FD check. The on-TV
+restoration record is `native-home/archived-assets-49e13fbfa4c41725e0cd/state.json`.
+Public assets, their hard links and all recovery journals remain. Free space
+increased to 129,835,008 bytes; the 64 MiB reserve was not reduced.
+
+The vendor Node build lacks `Intl`, so `buildProgram()` must remain a host-side
+operation. A diagnostic JSON inventory exceeding 64 KiB was truncated by an
+immediate `process.exit()`; waiting for the stdout write callback fixed the probe
+before any staging deletion. The backend clock was verified at UTC+10, matching
+`Australia/Brisbane`.
+
+Both TCP 8008 and 36669 briefly returned `EHOSTUNREACH` after rollback. The operator
+confirmed the TV was on. Ordinary SSDP discovery saw the same address and SSH
+subsequently worked; no wake, restart or power command was sent. Cause is unproven.
+
 ## Still pending
 
-Plex release packaging/deployment, actual card rendering and APC title launch,
-login/logout/account-switch acceptance, disable and rollback. Full sign-out may
-require operator-assisted Plex reauthentication; do not inject credentials into
-Plex storage or bypass profile protection to complete a test.
+Deploy the corrected pool implementation, verify actual personal-card rendering
+and card-to-APC launch, and complete login/logout/account-switch acceptance.
+Full sign-out may require operator-assisted Plex reauthentication; do not inject
+credentials into Plex storage or bypass profile protection to complete a test.

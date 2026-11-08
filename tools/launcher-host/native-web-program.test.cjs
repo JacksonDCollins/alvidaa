@@ -41,13 +41,19 @@ test('off-browser engine uses upstream filtering and publishes no credential fra
    if(url.includes('open-meteo'))return {status:503,body:null};
    if(url.includes('binance'))return {status:400,body:null};
    if(url.includes('/watch/providers/'))return {status:200,body:{results:[{provider_id:8,provider_name:'Netflix'}]}};
+   if(url.includes('/trending/movie/'))return {status:200,body:{results:[{id:1,title:'Trending',backdrop_path:'/one.jpg'}]}};
+   if(url.includes('/discover/movie'))return {status:200,body:{results:[{id:2,title:'Fresh',backdrop_path:'/two.jpg'}]}};
+   if(/\/movie\/[12]\?/.test(url))return {status:200,body:{genres:[],release_date:'2026-01-01','watch/providers':{results:{AU:{flatrate:[{provider_id:8,provider_name:'Netflix'}]}}}}};
    return {status:200,body:{results:[]}};
   }});
  engine.refresh();await new Promise(resolve=>setImmediate(resolve));
  const state=engine.snapshot();assert.equal(state.pending,0);assert.equal(state.city,'Brisbane');
  assert.ok(requests.some(url=>url.includes('with_watch_providers=8')));
  assert.ok(state.cache['fmtv.recs']);assert.ok(!JSON.stringify(state).includes(token));
- assert.ok(!JSON.stringify(state).includes('X9Y8Z7'));engine.stop();
+ assert.ok(!JSON.stringify(state).includes('X9Y8Z7'));
+ const recs=JSON.parse(state.cache['fmtv.recs']);assert.equal(recs.plexPoolVersion,1);
+ assert.equal(recs.picks.find(p=>p.id===1).nativeTrending,true);
+ assert.ok(!recs.picks.find(p=>p.id===2).nativeTrending);engine.stop();
 });
 test('unknown TV timezone does not silently request New York weather or US picks',async()=>{
  const requests=[];const engine=createEngine({token:'eyJ.fake',context:{zone:'',apps:[],prefs:'{"quotes":false}'},request:async url=>{
