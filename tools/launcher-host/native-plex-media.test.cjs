@@ -27,6 +27,24 @@ test('personal picks wait for local artwork; disabling removes them without modi
  assert.equal(JSON.parse(snapshot.cache['fmtv.recs']).picks.length,2);
  for(const bad of ['broken','null','[]'])assert.deepEqual(JSON.parse(renderableSnapshot({cache:{'fmtv.recs':bad}},render).cache['fmtv.recs']).picks,[]);
 });
+test('publication removes stale image mappings and orphan media while preserving current art and native icons',()=>{
+ const current='/plex-'+'c'.repeat(64)+'.jpg',oldRaw=base+'b'.repeat(64)+'-raw.png',currentRaw=base+'d'.repeat(64)+'-raw.jpg';
+ const publicRaw=base+'e'.repeat(64)+'-raw.jpg',iconRaw=base+'f'.repeat(64)+'-raw.png',lift=base+'f'.repeat(64)+'-logo.png';
+ const icon='file:///hisenseUI/var/local/storeAppIcon/app.png',thumb=base+'d'.repeat(64)+'-thumb.png',orphan=base+'0'.repeat(64)+'-raw.jpg';
+ const render={images:{['w1280:'+ref]:oldRaw,['original:'+ref]:oldRaw,['poster:'+ref]:oldRaw,['w1280:'+current]:currentRaw,'w780:/public.jpg':publicRaw},media:{
+  [oldRaw]:{src:oldRaw},[orphan]:{src:orphan},[currentRaw]:{src:currentRaw,thumb},[thumb]:{src:thumb},[publicRaw]:{src:publicRaw},
+  [icon]:{src:iconRaw,lift:{src:lift}},[iconRaw]:{src:iconRaw},[lift]:{src:lift}},imageFailures:1};
+ const publicPick={id:1,backdrop:'/public.jpg'},snapshot={cache:{'fmtv.recs':JSON.stringify({picks:[publicPick,{id:-2,source:'plex',backdrop:current}]})}};
+ const before=JSON.stringify({snapshot,render}),out=renderableSnapshot(snapshot,render);
+ assert.deepEqual(Object.keys(out.images).sort(),['w1280:'+current,'w780:/public.jpg'].sort());
+ for(const key of [currentRaw,thumb,publicRaw,icon,iconRaw,lift])assert.ok(out.media[key]);
+ for(const key of [oldRaw,orphan])assert.ok(!out.media[key]);
+ assert.equal(out.imageFailures,1);assert.equal(JSON.stringify({snapshot,render}),before);
+ const disabled=renderableSnapshot({cache:{'fmtv.recs':JSON.stringify({picks:[publicPick]})}},render);
+ assert.deepEqual(disabled.images,{'w780:/public.jpg':publicRaw});assert.ok(!disabled.media[currentRaw]);assert.ok(!disabled.media[thumb]);
+ const damaged=renderableSnapshot({cache:{'fmtv.recs':'broken'}},render);
+ assert.deepEqual(damaged.images,{});assert.deepEqual(Object.keys(damaged.media).sort(),[icon,iconRaw,lift].sort());
+});
 test('Plex artwork uses only the authenticated private client and remains usable from verified local cache',{skip:!process.env.NATIVE_IMAGE_HELPER},async t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fmtv-plex-art-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const icons=path.join(dir,'icons');fs.mkdirSync(icons);let downloads=0,authorized=true;

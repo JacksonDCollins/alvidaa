@@ -29,7 +29,23 @@ function renderableSnapshot(snapshot,render){
  recs.picks=Array.isArray(recs.picks)?recs.picks.filter(p=>p&&(p.source!=='plex'||
   ['w1280','w780','w300','original'].some(size=>/^file:\/\/\/hisenseUI\/var\/local\/free-my-tv\/media\/[a-f0-9]{64}-raw\.(png|jpg)$/.test(render.images[size+':'+p.backdrop]||'')))):[];
  cache['fmtv.recs']=JSON.stringify(recs);
- return {...snapshot,cache,...render};
+ // Publish only current recommendations and reachable media, not a prior owner's cache.
+ const wanted=new Set();
+ for(const pick of recs.picks){
+  if(pick.backdrop)for(const size of ['w1280','w780','w300','original'])wanted.add(size+':'+pick.backdrop);
+  if(pick.source==='plex'&&pick.poster)wanted.add('poster:'+pick.poster);
+  if(pick.logo)wanted.add('w500:'+pick.logo);
+ }
+ const images=Object.fromEntries(Object.entries(render.images||{}).filter(([key])=>wanted.has(key)));
+ const sourceMedia=render.media||{},reachable=new Set(Object.values(images)),entries=[];
+ for(const key of Object.keys(sourceMedia))if(key.startsWith('file:///hisenseUI/var/local/storeAppIcon/'))reachable.add(key);
+ for(const key of reachable){
+  if(typeof key!=='string'||!Object.hasOwn(sourceMedia,key))continue;
+  const value=sourceMedia[key];if(!value||typeof value!=='object')continue;
+  entries.push([key,value]);
+  for(const ref of [value.src,value.thumb,value.lift&&value.lift.src])if(typeof ref==='string')reachable.add(ref);
+ }
+ return {...snapshot,...render,cache,images,media:Object.fromEntries(entries)};
 }
 function start(options){
  const directory=path.resolve(options.directory),credentials=readCredentials(options.credentials),token=credentials.token;
@@ -43,18 +59,16 @@ function start(options){
  atomic(lock,String(process.pid),0o600);
  const sessionSource=credentials.automatic?(options.sessionSource||createSession(credentials.automatic)):null;
  const engineFactory=options.engineFactory||createEngine,mediaFactory=options.mediaFactory||createMedia,plexFactory=options.plexFactory||createPlex;
- let account={state:sessionSource?'pending':'disabled'},accountSignature='',personal=null;
+ let account={state:sessionSource||credentials.plex?'pending':'disabled'},accountSignature='',personal=null;
  let stopped=false,engine=null,media=null,context=null,signature='',lastRefresh=0,writing=null,polling=null;
  let imageBusy=false,imageAgain=false,lastPublished='',homeStamp='',render={images:{},media:{},imageFailures:0};
  let old={};try{old=readJSON(path.join(directory,'snapshot.json'),8*1024*1024);}catch{/* First start or damaged cache. */}
  if(old.version===1){
   render={images:old.images||{},media:old.media||{},imageFailures:old.imageFailures||0};
-  if(credentials.mode!=='manual'){
-   // Never hydrate a previous account from disk while automatic discovery is pending.
-   old={...old,keyConfigured:!!token,plexConfigured:false,plexState:account.state,
-    cache:{...old.cache,'fmtv.recs':mergePlex(old.cache&&old.cache['fmtv.recs'],[],!!token)}};
-   atomic(path.join(directory,'snapshot.json'),JSON.stringify({...old,workerPid:process.pid}));
-  }
+  // Persisted personal picks and artwork never authorize a new worker session.
+  old={...old,keyConfigured:!!token,plexConfigured:false,plexState:account.state,
+   cache:{...old.cache,'fmtv.recs':mergePlex(old.cache&&old.cache['fmtv.recs'],[],!!token)}};
+  atomic(path.join(directory,'snapshot.json'),JSON.stringify({...renderableSnapshot(old,render),workerPid:process.pid}));
  }
  function publish(){
   writing=null;if(stopped||!engine)return;

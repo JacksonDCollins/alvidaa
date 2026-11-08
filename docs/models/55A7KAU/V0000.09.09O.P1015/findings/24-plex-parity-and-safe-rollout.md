@@ -98,8 +98,8 @@ personal entries from a capped persisted pool also invalidates its freshness so
 public tail entries can be refilled. Pinned upstream files remain unchanged.
 
 A guarded private-config disable and owned-worker restart produced `disabled`,
-zero personal picks, zero advertised personal image references and an unchanged
-TMDB token. The release's independent controller then rolled back exactly to
+zero personal picks and an unchanged TMDB token. Its image-reference counter
+was later found invalid; see the artwork-publication correction below. The release's independent controller then rolled back exactly to
 Home `e33a1ed19f07a7a072f79f54b68617087f34811ee2508de0534e2b1c61ac1393`.
 The exact pre-Plex private configuration was restored. A later SSH check confirmed
 the previous worker remained running/selected, the preference hash was unchanged,
@@ -148,13 +148,30 @@ opened the matching movie details page with the Play button idle. Home returned
 normally. No playback or profile/PIN bypass occurred.
 
 Disable was repeated on this exact build. The personal card disappeared from the
-visible Shows row; the snapshot reported `disabled`, zero personal picks and
-zero personal image references while TMDB stayed configured. The approved
+visible Shows row; the snapshot reported `disabled` and zero personal picks
+while TMDB stayed configured. The initial image-reference counter was wrong
+(`plex:` rather than `/plex-`), so its zero-reference result was invalid. The approved
 automatic configuration was then restored through the owned worker. This is
 advertised removal, not secure erasure of retained artwork cache files.
 
+## Artwork publication bug found before authentication testing
+
+A corrected diagnostic found ten `/plex-` artwork references still advertised
+while disabled. Old render mappings remained until image processing finished;
+persisted startup mappings and unreachable raw-media records were also published.
+The operator had not begun account tests and was asked to keep waiting.
+
+The fix filters published image mappings to the current renderable picks and
+publishes only media reachable from those mappings or native app-icon aliases.
+Startup sanitizes persisted recommendations and artwork in automatic, disabled
+and manual modes. Internal verified image caching remains available, but does not
+authorize publication. Tests cover stale posters/originals, orphan media, native
+icons and their derived resources, malformed context/cache, logout and late
+cancelled callbacks. All 175 launcher tests pass; deployment verification follows.
+
 ## Still pending
 
-Actual login/logout/account-switch acceptance requires operator-assisted Plex
+Deploy and verify artwork revocation, then actual login/logout/account-switch
+acceptance requires operator-assisted Plex
 authentication. Do not inject credentials into Plex storage or bypass profile
 protection to complete a test. A cold boot remains untested and unauthorized.
