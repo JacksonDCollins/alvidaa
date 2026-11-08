@@ -73,7 +73,15 @@ mistook persisted startup cache for a committed authenticated list; startup corr
 removed it, so the refresh-retention assertion now exercises an actual completed
 list fetch. No production manual URL/token configuration route remains.
 
-All **182 launcher tests**, three packaging tests, repository checks and diff checks
+A full offline worker/engine/image-processor test exposed an ordering trap: the
+pinned web implementation rejected an empty public list before Plex could fill it.
+The insertion now occurs before the final empty-list check, as in Android. TMDB
+configuration and successful provider discovery are still required; this is not
+restoration of the removed Plex-only mode. The real pipeline test verifies shared
+backdrop resources, portrait preparation and complete publication revocation on
+logout, with all network calls replaced by fixtures.
+
+All **183 launcher tests**, three packaging tests, repository checks and diff checks
 passed. LSP returned no error diagnostics but could not confirm six source files
 clean (silent push-only server); it is not recorded as a clean LSP sweep.
 

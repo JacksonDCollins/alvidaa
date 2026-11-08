@@ -76,22 +76,23 @@ function dataSource(source){
   source=replaceOnce(source,"  var cache = stored('recs') || {};","  var cache = stored('recs') || {}, plexPoolVersion = cache.plexPoolVersion || 0;\n  if (plexPoolVersion !== 1) { cache.listAt = 0; cache.stamp = ''; }");
   source=replaceOnce(source,'{picks: picks, listAt: listAt, period: period, lang: listLang, stamp: stamp}','{picks: picks, listAt: listAt, period: period, lang: listLang, stamp: stamp, plexPoolVersion: plexPoolVersion}');
   source=replaceOnce(source,'if (!de && p.app) hot[kind].push(p);','if (!de && p.app) { p.nativeTrending = true; hot[kind].push(p); }');
-  source=replaceOnce(source,'            picks = list;','            picks = list; plexPoolVersion = 1;');
   // Plex is a personal-library source, not TMDB's free Plex catalogue.
   source=replaceOnce(source,'  function appFor(key) {',`  function appFor(key) {
     if (key === 'plex') {
       for (var a = 0; a < installed.length; a++) if (/^plex(?:$| |:)/i.test(installed[a].title)) return installed[a];
       return null;
     }`);
-  source=replaceOnce(source,'  function fetchList(done) {',`  function fetchList(done) {
-    fetchPublicList(function(error) {
-      if (error || !window.nativePlex) { done(error); return; }
-      window.nativePlex(JSON.stringify({picks:picks,plexPoolVersion:plexPoolVersion}), function(value) {
-        picks = JSON.parse(value).picks; done(null);
-      });
-    });
-  }
-  function fetchPublicList(done) {`);
+  // Canonical Plex insertion precedes the final empty-list check, not public discovery errors.
+  source=replaceOnce(source,`            if (!list.length) { done(new Error('TMDB returned no recommendations')); return; }
+            picks = list;
+            done(null);`,`            function complete(result) {
+              if (!result.length) { done(new Error('TMDB returned no recommendations')); return; }
+              picks = result; plexPoolVersion = 1; done(null);
+            }
+            if (window.nativePlex) window.nativePlex(JSON.stringify({picks:list,plexPoolVersion:1}), function(value) {
+              complete(JSON.parse(value).picks);
+            });
+            else complete(list);`);
   source=replaceOnce(source,'var hour = Math.floor(Date.now() / 3600000), out = [], seen = {};',
     'var hour = Math.floor(Date.now() / 3600000), out = [], seen = {}, personalShown = false;');
   source=replaceOnce(source,'      if (!seen[f]) { seen[f] = true; out.push(q); }',
