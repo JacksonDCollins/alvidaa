@@ -31,9 +31,30 @@ own appropriate login. Use a server account whose accessible libraries are
 appropriate for everyone using this launcher; app-launch PIN checks are not a
 substitute for restricting the recommendation account's library access.
 
+## Automatic active-account mode (not deployed)
+
+The worker now supports `plex_auto: true`, an approved `plex_url`, and
+`plex_server_id` (the matching server identity verified through HTTPS `/identity`).
+Keep `tmdb_token` unchanged. No `plex_token` is required in this mode, and an old
+manual token is never used as fallback. Setting `plex_auto: false` explicitly
+disables Plex even if old manual fields remain; restart the owned worker after
+configuration changes.
+
+The worker follows only the TV app's selected authenticated account and that
+account's access to the approved server. It reads the live storage without writes
+or locks, and drops personal picks on observed logout, account changes or uncertain
+reads. It does not automatically choose an unknown server, sign in, bypass a PIN,
+or follow another cached profile. Discovery is polled, not a synchronous Plex event.
+
+This implementation passed offline account-switch/failure tests and a read-only
+TV selector probe; it has **not** passed deployed login/logout acceptance. Original
+Android parity also still needs title navigation, portrait posters and refresh
+alignment. See [automatic-session evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/23-plex-automatic-session.md).
+
 ## Connection and credential policy
 
-The existing private feed JSON in `server/keys/` accepts two optional fields:
+For legacy manual mode (no `plex_auto` field), the existing private feed JSON
+in `server/keys/` accepts two optional fields:
 
 - `plex_url`: the server's HTTPS `*.plex.direct` origin, including its port.
   No path, query, fragment or embedded username/password is accepted.
@@ -84,12 +105,14 @@ There is no additional HTTP listener, MQTT session or PC runtime dependency.
 ## Deployment and teardown
 
 The updated frontend **and** worker modules must be packaged together. The
-release verifier requires `native-feed-plex.cjs`; the package includes it.
+release verifier and package include `native-feed-plex.cjs`,
+`native-plex-session.cjs` and `native-plex-storage.cjs`.
 Use the existing guarded release process, not manual writes over the running
 worker. Current TV storage headroom needs review before any full release update;
 never lower the 64 MiB reserve or silently delete recovery history to make room.
 
-To disable: remove both Plex fields (preserving TMDB), or set both to empty
+To disable automatic mode: set `plex_auto: false` and restart the owned worker.
+For legacy manual mode: remove both Plex fields (preserving TMDB), or set both to empty
 strings, then restart the owned feed worker through its normal service controller.
 The new snapshot drops personal picks. Cached artwork may remain on disk under
 normal image-cache retention; disabling is not a secure-erase operation.

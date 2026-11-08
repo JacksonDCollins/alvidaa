@@ -9,14 +9,18 @@ const crypto=require('node:crypto');
 const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
 const IMAGE=/^\/plex-[a-f0-9]{64}\.jpg$/;
 const ART=/^\/library\/metadata\/[1-9][0-9]{0,9}\/(art|thumb)(\/[0-9]{1,16})?$/;
+function serverOrigin(url){
+ if(typeof url!=='string'||url.length>512)throw new Error('Invalid private Plex origin');
+ let parsed;try{parsed=new URL(url);}catch{throw new Error('Invalid private Plex origin');}
+ if(parsed.protocol!=='https:'||!parsed.hostname.endsWith('.plex.direct')||parsed.hostname.length>253||
+    parsed.username||parsed.password||parsed.pathname!=='/'||parsed.search||parsed.hash||parsed.port==='0')throw Error('Plex requires its HTTPS plex.direct origin');
+ return {origin:parsed.origin,hostname:parsed.hostname};
+}
 function configuration(value){
  const url=value.plex_url,token=value.plex_token;
  if((url===undefined||url==='')&&(token===undefined||token===''))return null;
- if(typeof url!=='string'||url.length>512||typeof token!=='string'||! /^[A-Za-z0-9._~-]{8,4096}$/.test(token))throw Error('Invalid private Plex configuration');
- let parsed;try{parsed=new URL(url);}catch{throw Error('Invalid private Plex configuration');}
- if(parsed.protocol!=='https:'||!parsed.hostname.endsWith('.plex.direct')||parsed.hostname.length>253||
-    parsed.username||parsed.password||parsed.pathname!=='/'||parsed.search||parsed.hash||parsed.port==='0')throw Error('Plex requires its HTTPS plex.direct origin');
- return {origin:parsed.origin,token,hostname:parsed.hostname};
+ if(typeof token!=='string'||! /^[A-Za-z0-9._~-]{8,4096}$/.test(token))throw new Error('Invalid private Plex configuration');
+ return {...serverOrigin(url),token};
 }
 function privateAddress(address){
  if(typeof address!=='string')return false;
@@ -150,4 +154,4 @@ function merge(cache,plexPicks,tmdbConfigured){
  for(let i=0;i<plexPicks.length;i++)base.splice(Math.min(1+i*2,base.length),0,plexPicks[i]);
  return JSON.stringify({...recs,picks:base});
 }
-module.exports={configuration,privateAddress,createPlex,merge,IMAGE};
+module.exports={configuration,serverOrigin,privateAddress,createPlex,merge,IMAGE};

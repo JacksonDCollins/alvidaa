@@ -13,7 +13,7 @@ const REVISION='f2d984c51edca1544e39f2d44cdf86b75b0b6703';
 const RUNTIME='/var/local/alvidaa/native-web-v3';
 const ASSETS='/APPS/channelA/hisenseUI/var/local/free-my-tv/assets';
 const CONTROL=['native-web-release.cjs','native-home.cjs','native-trial.cjs','native-update.cjs','stock-ui-restart.cjs','native-web-service.cjs','native-web-boot.cjs','native-feed-boot.sh','retire-native-bridge.cjs'];
-const REQUIRED=[...CONTROL,'native-feed-worker.cjs','native-feed-engine.cjs','native-feed-http.cjs','native-feed-images.cjs','native-feed-plex.cjs','native-web-program.cjs','native-web-locale.cjs','native-image','candidate.js','third-party/free-my-tv/LICENSE','third-party/free-my-tv/upstream/MANIFEST.json'];
+const REQUIRED=[...CONTROL,'native-feed-worker.cjs','native-feed-engine.cjs','native-feed-http.cjs','native-feed-images.cjs','native-feed-plex.cjs','native-plex-session.cjs','native-plex-storage.cjs','native-web-program.cjs','native-web-locale.cjs','native-image','candidate.js','third-party/free-my-tv/LICENSE','third-party/free-my-tv/upstream/MANIFEST.json'];
 const privateMode={uid:process.getuid(),gid:process.getgid(),mode:0o600};
 function relative(name){
  assert.ok(typeof name==='string'&&/^[a-zA-Z0-9_./-]+$/.test(name)&&!name.startsWith('/')&&
