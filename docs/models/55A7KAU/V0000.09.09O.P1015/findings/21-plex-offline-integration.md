@@ -44,3 +44,21 @@ The legacy reverse-shell startup must be retired through a guarded change before
 adding personal credentials. Storage must be rechecked without lowering the
 64 MiB reserve or discarding recovery history. The installed Home remains the
 previous Settings-backdrop build, not this new integration.
+
+## Read-only follow-up: reusing the TV's Plex login
+
+The operator requested a one-time import from the already logged-in Plex TV app
+instead of supplying a separate server login. Native context identifies Plex as
+`app:42`. Plex-origin records exist in the app browser's Chromium localStorage
+under `/var/local/webengine/odin_home_browser/Normal/Local Storage/leveldb`,
+separate from the Cobalt Home storage. Never clear or rewrite that shared database.
+
+A bounded, on-TV, read-only WAL probe filtered records by Plex origin before
+examining values and printed only counts/presence flags. The current 1,110-byte
+WAL contained three Plex records and one nondeleted key, but no recognized token
+or secure-server URL. This is **not proof that credentials are absent**: older
+compacted tables were not examined. No credential values were printed or copied.
+Only the Home browser executable was running during the process check; no Plex
+browser session or existing remote-debugging flag was observed. Reuse of the
+actual logged-in session remains unverified. No app navigation or storage writes
+were performed by these probes.
