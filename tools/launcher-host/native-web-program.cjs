@@ -122,6 +122,10 @@ function buildProgram(){
   data=replaceOnce(data,'    COINS: COINS,',HYDRATE+'    COINS: COINS,');
   let home=s['home.js'];
   for(const [before,after] of [
+    ['  function launcher(id, name) {','  function launcher(id, name, params) {'],
+    ['      TV.launch(id, null, function (ok) {','      TV.launch(id, params || null, function (ok) {'],
+    ['        if (app) launcher(app.id, app.title)();',"        if (app) launcher(app.id, app.title, p.source === 'plex' && p.plexTitle ? {plexTitle:p.plexTitle} : null)();"],
+    ["Data.image(p.backdrop, c === 0 ? 'w1280' : 'w780')","((c > 0 && p.source === 'plex' && p.poster && Data.image(p.poster, 'poster')) || Data.image(p.backdrop, c === 0 ? 'w1280' : 'w780'))"],
     ['  function sym(name, parent, size) {','  function sym(name, parent, size) {\n    if (Native) return Native.symbol(name, parent, size);'],
     ['  function coin(i, parent) {','  function coin(i, parent) {\n    if (Native) return Native.coin(i, parent);'],
     ['  function lift(img) {','  function lift(img) {\n    if (Native) return Native.lift(img);'],

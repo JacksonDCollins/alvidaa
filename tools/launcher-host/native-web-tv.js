@@ -113,10 +113,10 @@
       },
       apps: function (done) { done(apps.map(function (app) { return Object.assign({}, app); })); },
       inputs: function (done) { done(inputs.map(function (input) { return Object.assign({}, input); })); },
-      launch: function (id, _params, done) {
+      launch: function (id, params, done) {
         action(function () {
           if (Object.prototype.hasOwnProperty.call(sourceIds, id)) return platform.changeSource(sourceIds[id]);
-          if (Object.prototype.hasOwnProperty.call(appIds, id)) return platform.launchApp(appIds[id]);
+          if (Object.prototype.hasOwnProperty.call(appIds, id)) return platform.launchApp(appIds[id], params);
           throw new Error("Unknown or removed native app/input");
         }, done);
       },

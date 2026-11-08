@@ -22,8 +22,10 @@ The original MIT notice is retained in [LICENSE](third-party/free-my-tv/LICENSE)
   Personal cards wait until local artwork is available; the browser never fetches
   an authenticated Plex URL. Localized metadata uses the existing UI translators.
 - Works with an explicitly empty TMDB token as a Plex-only recommendation source.
-- Uses the existing native app lookup and guarded APC launch path. Selecting a
-  card currently opens the **Plex app**, not a verified title-specific page.
+- Uses the existing native app lookup and guarded APC path to request a title's
+  details with autoplay disabled. The native-service route was verified on the TV;
+  clicking a deployed launcher card still needs acceptance.
+- Uses 500×750 portrait posters on narrow Plex cards, with backdrop fallback.
 
 It does not sign the TV's Plex app into an account, import watch progress, or
 implement Continue Watching. Those are separate features. The TV app needs its
@@ -48,8 +50,8 @@ or follow another cached profile. Discovery is polled, not a synchronous Plex ev
 
 This implementation passed offline account-switch/failure tests and a read-only
 TV selector probe; it has **not** passed deployed login/logout acceptance. Original
-Android parity also still needs title navigation, portrait posters and refresh
-alignment. See [automatic-session evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/23-plex-automatic-session.md).
+Android title navigation, portrait posters and refresh alignment are implemented;
+see [rollout evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/24-plex-parity-and-safe-rollout.md) for the remaining integrated checks. See [automatic-session evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/23-plex-automatic-session.md).
 
 ## Connection and credential policy
 
@@ -92,7 +94,8 @@ Metadata is limited to 16 sections, eight returned items per queried section,
 and 2 MiB per response. Images are limited to 8 MiB per download and use the
 existing image processor's pixel/time/storage bounds. Requests time out after
 10 seconds; a metadata refresh has a 30-second budget. Successful metadata is
-cached for four hours, failures for five minutes. Failed artwork requests also
+cached for six hours, with refresh at local 05:00/12:00/18:00 period changes and
+clock rollback. Failures back off for five minutes. Failed artwork requests also
 back off for five minutes rather than hammering a sleeping server.
 
 No Plex requests occur when its app is absent from the native app list. Worker
@@ -127,5 +130,5 @@ Plex-only rendering, localized metadata, disconnect and package completeness.
 Real-server certificate/DNS, library and artwork transport checks passed using
 the selected TV user's server-scoped token; the ordinary native Plex launch was
 also exercised. Integrated on-TV card rendering, card-to-app launch and removal
-still need acceptance after safe deployment. Specific-title launching remains
-explicitly unimplemented until VIDAA support is demonstrated.
+still need acceptance after safe deployment. A native-service title-details probe
+passed without playback; this does not replace deployed card-to-APC acceptance.

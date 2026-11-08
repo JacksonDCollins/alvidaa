@@ -30,6 +30,7 @@ function privateAddress(address){
  const parts=address.split('.').map(Number);
  return parts[0]===10||(parts[0]===172&&parts[1]>=16&&parts[1]<=31)||(parts[0]===192&&parts[1]===168);
 }
+function period(time){const hour=new Date(time).getHours();return hour>=5&&hour<12?0:hour>=12&&hour<18?1:2;}
 function createPlex(config,options={}){
  // Revalidate even callers that did not come through the worker's credential reader.
  const checked=configuration({plex_url:config.origin,plex_token:config.token});
@@ -85,6 +86,8 @@ function createPlex(config,options={}){
  }
  function text(value,limit){return typeof value==='string'?value.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,limit):'';}
  async function load(signal){
+  const serverId=(await json('/identity',signal)).machineIdentifier;
+  if(typeof serverId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(serverId)||(config.serverId&&config.serverId!==serverId))throw Error('Plex server identity mismatch');
   const sections=(await json('/library/sections',signal)).Directory;
   if(!Array.isArray(sections)||sections.length>16)throw Error('Plex library limit exceeded');
   const lists={movie:[],tv:[]},nextRefs=new Map();
@@ -109,7 +112,8 @@ function createPlex(config,options={}){
     const pick={id:-Number(item.ratingKey),kind,title,backdrop,poster:imageRef(item.thumb),logo:null,
      genre,minutes:Number.isSafeInteger(minutes)&&minutes>0&&minutes<=1440?minutes:0,
      seasons:Number.isSafeInteger(seasons)&&seasons>0&&seasons<=1000?seasons:0,
-     app:'plex',meta:parts.join(' · '),detailed:true,source:'plex'};
+     app:'plex',meta:parts.join(' · '),detailed:true,source:'plex',
+     plexTitle:{providerId:serverId,ratingKey:String(item.ratingKey)}};
     if([token,origin].some(secret=>JSON.stringify(pick).includes(secret)))continue;
     lists[kind].push(pick);if(lists[kind].length===8)break;
    }
@@ -121,8 +125,8 @@ function createPlex(config,options={}){
  function refresh(){
   if(stopped)return Promise.resolve();
   if(inflight)return inflight;
-  const ttl=state==='ready'?4*3600000:5*60000;
-  if(attempt!==null&&now()-attempt<ttl)return Promise.resolve();
+  const ttl=state==='ready'?6*3600000:5*60000,elapsed=attempt===null?Infinity:now()-attempt;
+  if(attempt!==null&&elapsed>=0&&elapsed<ttl&&(state!=='ready'||period(now())===period(attempt)))return Promise.resolve();
   attempt=now();const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),options.refreshTimeoutMs||30000);
   inflight=load(controller.signal).then(result=>{
@@ -136,11 +140,11 @@ function createPlex(config,options={}){
   snapshot(){return {state,picks:picks.map(x=>({...x}))};},
   ownsImage(ref){return !stopped&&refs.has(ref);},
   image(ref,size){
-   const widths={w300:300,w500:500,w780:780,w1280:1280,original:1920};
+   const widths={w300:300,w500:500,w780:780,w1280:1280,original:1920,poster:500};
    const width=Object.hasOwn(widths,size)?widths[size]:0;
    if(!width||!refs.has(ref)||stopped)return Promise.reject(Error('Unknown Plex image'));
    if((imageFailures.get(ref)||0)>now())return Promise.reject(Error('Plex artwork unavailable'));
-   return request('/photo/:/transcode?width='+width+'&height='+Math.round(width*9/16)+'&minSize=1&url='+encodeURIComponent(refs.get(ref)),true)
+   return request('/photo/:/transcode?width='+width+'&height='+(size==='poster'?750:Math.round(width*9/16))+'&minSize=1&url='+encodeURIComponent(refs.get(ref)),true)
     .catch(()=>{if(!stopped)imageFailures.set(ref,now()+5*60000);throw Error('Plex artwork unavailable');});
   },
   stop(){stopped=true;for(const cancel of [...requests])cancel();picks=[];refs.clear();imageFailures.clear();}

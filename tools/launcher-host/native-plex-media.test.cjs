@@ -31,11 +31,11 @@ test('Plex artwork uses only the authenticated private client and remains usable
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fmtv-plex-art-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const icons=path.join(dir,'icons');fs.mkdirSync(icons);let downloads=0,authorized=true;
  const cache=createMedia({directory:path.join(dir,'media'),iconRoot:icons,processor:process.env.NATIVE_IMAGE_HELPER,uriBase:base,
-  plex:{ownsImage:value=>authorized&&value===ref,image:async(value,size)=>{assert.equal(value,ref);assert.ok(['w1280','w780','w300','original'].includes(size));downloads++;return png;}},
+  plex:{ownsImage:value=>authorized&&value===ref,image:async(value,size)=>{assert.equal(value,ref);assert.ok(['w1280','w780','w300','original','poster'].includes(size));downloads++;return png;}},
   download:async()=>{throw Error('Personal images must not reach TMDB');}});
- t.after(()=>cache.stop());const data={'fmtv.recs':JSON.stringify({picks:[{source:'plex',backdrop:ref}]})};
- const first=await cache.update({apps:[]},data);assert.equal(first.imageFailures,0);assert.equal(downloads,4);
- assert.ok(first.images['original:'+ref].startsWith(base));
- const again=await cache.update({apps:[]},data);assert.equal(again.imageFailures,0);assert.equal(downloads,4);
- authorized=false;const denied=await cache.update({apps:[]},data);assert.equal(denied.imageFailures,4);assert.equal(downloads,4,'even cached art requires fresh metadata authorization');
+ t.after(()=>cache.stop());const data={'fmtv.recs':JSON.stringify({picks:[{source:'plex',backdrop:ref,poster:ref}]})};
+ const first=await cache.update({apps:[]},data);assert.equal(first.imageFailures,0);assert.equal(downloads,5);
+ assert.ok(first.images['original:'+ref].startsWith(base));assert.ok(first.images['poster:'+ref].startsWith(base));
+ const again=await cache.update({apps:[]},data);assert.equal(again.imageFailures,0);assert.equal(downloads,5);
+ authorized=false;const denied=await cache.update({apps:[]},data);assert.equal(denied.imageFailures,5);assert.equal(downloads,5,'even cached art requires fresh metadata authorization');
 });

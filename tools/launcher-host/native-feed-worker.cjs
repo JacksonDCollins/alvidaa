@@ -128,7 +128,7 @@ function start(options){
     engine=replacement;personal=plex;context=next;signature=nextSignature;
     media=owner;lastRefresh=0;old={};imageAgain=true;
    }
-   if(engine&&Date.now()-lastRefresh>=30000){
+   if(engine&&(Date.now()<lastRefresh||Date.now()-lastRefresh>=30000)){
     lastRefresh=Date.now();engine.refresh();schedule();
     if(engine.snapshot().pending===0)void images();
    }

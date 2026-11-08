@@ -53,6 +53,12 @@ test('launches resolve through SDK platform; params cannot override APC checks',
   assert.equal(await launch(f.tv,'source:TV'),true);assert.deepEqual(f.calls.at(-1),['source','TV']);
   assert.equal(await launch(f.tv,'unknown'),false);
 });
+test('Plex title metadata reaches the guarded platform adapter unchanged',async()=>{
+  const f=setup();f.tv.start();let received;
+  f.platform.launchApp=(id,params)=>{received={id,params};};
+  const params={plexTitle:{providerId:'fixture-server',ratingKey:'123'}};
+  assert.equal(await launch(f.tv,'app:2',params),true);assert.deepEqual(received,{id:'2',params});
+});
 test('removed apps and failed native requests report failure without bypass fallback',async()=>{
   const f=setup();f.tv.start();f.publish({apps:[],sources:[]});
   assert.equal(await launch(f.tv,'app:1'),false);assert.equal(await launch(f.tv,'source:TV'),false);

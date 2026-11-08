@@ -12,10 +12,11 @@ function frontend(){
  scope.I18N.set('en');scope.Data.setApps([{id:'app:7',title:'Plex'},{id:'app:8',title:'Netflix'}]);return scope;
 }
 const picks=[{id:1,kind:'movie',title:'Public movie',app:'netflix',detailed:true},
- {id:-2,kind:'movie',title:'Personal movie',app:'plex',source:'plex',detailed:true,minutes:95,genre:'Drama'},
+ {id:-2,kind:'movie',title:'Personal movie',app:'plex',source:'plex',detailed:true,minutes:95,genre:'Drama',poster:'/plex-fixture.jpg',plexTitle:{providerId:'fixture-server',ratingKey:'2'}},
  {id:-3,kind:'tv',title:'Personal show',app:'plex',source:'plex',detailed:true,seasons:3,genre:'Drama'}];
 test('actual web data adapter shows Plex-only picks without pretending TMDB is configured',()=>{
  const s=frontend();s.Data.nativeSnapshot({'fmtv.recs':JSON.stringify({picks})},'',false);
+ assert.equal(s.Data.picks('movie')[0].plexTitle.ratingKey,'2');assert.equal(s.Data.picks('movie')[0].poster,'/plex-fixture.jpg');
  assert.equal(s.Data.hasKey(),false);assert.equal(s.Data.appFor('plex').id,'app:7');
  assert.deepEqual(Array.from(s.Data.picks('movie'),x=>x.id),[-2]);assert.deepEqual(Array.from(s.Data.picks('tv'),x=>x.id),[-3]);
  assert.equal(s.Data.picks(null).length,1,'one Plex pick per tab');

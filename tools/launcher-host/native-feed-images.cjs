@@ -119,6 +119,7 @@ function createMedia(options){
    if(pick.backdrop){
     for(const size of ['w1280','w780','w300','original'])wanted.set(size+':'+pick.backdrop,[pick.backdrop,size]);
    }
+   if(pick.source==='plex'&&pick.poster)wanted.set('poster:'+pick.poster,[pick.poster,'poster']);
    if(pick.logo)wanted.set('w500:'+pick.logo,[pick.logo,'w500']);
   }
   for(const args of wanted.values()){

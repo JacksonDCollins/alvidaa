@@ -58,6 +58,18 @@ function fixture() {
     latest: () => updates.at(-1) };
 }
 
+test('Plex title targets retain native guards and cannot enable autoplay or redirect apps', () => {
+  const f=fixture();f.state.apps=[{appId:'42',appName:'Plex',url:'https://app.plex.tv/tv-vidaa',storeType:98}];f.adapter.start();
+  const params={plexTitle:{providerId:'fixture-server',ratingKey:'123'},autoplay:true,bypassPin:true};
+  f.adapter.launchApp('42',params);
+  const call=f.calls.at(-1)[2],url=new URL(call.url);
+  assert.equal(url.searchParams.get('providerId'),'fixture-server');assert.equal(url.searchParams.get('ratingKey'),'123');
+  assert.equal(url.searchParams.get('autoplay'),'0');assert.equal(call.bypassPin,undefined);assert.equal(call.startMethod,'remote');
+  f.state.restricted=true;assert.throws(()=>f.adapter.launchApp('42',params),/restricted/);f.state.restricted=false;
+  for(const target of ['https://evil.test/tv-vidaa','https://app.plex.tv/tv-vidaa?autoplay=1']){f.state.apps[0].url=target;assert.throws(()=>f.adapter.launchApp('42',params),/Unsupported/);}
+  f.state.apps[0].url='https://app.plex.tv/tv-vidaa';params.plexTitle.providerId='server&autoplay=1';
+  assert.throws(()=>f.adapter.launchApp('42',params),/Unsupported/);f.adapter.stop();
+});
 test('reads native lists immediately and retains app metadata without transport', () => {
   const f = fixture(); f.adapter.start();
   assert.equal(f.latest().apps[0].storeType, 2);

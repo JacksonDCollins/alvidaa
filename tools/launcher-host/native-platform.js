@@ -72,7 +72,7 @@
       openSettings: function () {
         return sdk.me.req("setting").open("settings", { vk: "T" });
       },
-      launchApp: function (appId) {
+      launchApp: function (appId, params) {
         if (!apps.some(function (app) { return app && String(app.appId) === String(appId); })) {
           throw new Error("App is not in the current native app list");
         }
@@ -80,10 +80,22 @@
           { appId: String(appId), url: "", checkRange: 1 });
         var app = response && response.result;
         if (!app || String(app.appId) !== String(appId)) throw new Error("App is unavailable or restricted");
+        var targetUrl = app.url || "";
+        if (params && params.plexTitle) {
+          var title = params.plexTitle;
+          if (!/^plex$/i.test(app.appName || app.name || "") ||
+              !/^https:\/\/app\.plex\.tv\/tv-vidaa\/?$/.test(targetUrl) ||
+              typeof title.providerId !== "string" || !/^[A-Za-z0-9_-]{8,128}$/.test(title.providerId) ||
+              typeof title.ratingKey !== "string" || !/^[1-9][0-9]{0,9}$/.test(title.ratingKey)) {
+            throw new Error("Unsupported Plex title target");
+          }
+          targetUrl += "?providerId=" + encodeURIComponent(title.providerId) +
+            "&ratingKey=" + encodeURIComponent(title.ratingKey) + "&autoplay=0";
+        }
         // APC owns parental PIN, EULA and hotel-mode checks. Never propagate
         // bypass flags from a UI record or invoke the lower-level app service.
         return sdk.apc.start({ name: app.appName || "", appId: app.appId,
-          url: app.url || "", storeType: app.storeType,
+          url: targetUrl, storeType: app.storeType,
           startMethod: sdk.apc.CMDMETHOD.REMOTECONTROL, typeCode: "600002" });
       },
       changeSource: function (sourceId) {
