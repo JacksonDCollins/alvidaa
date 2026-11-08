@@ -126,9 +126,35 @@ Both TCP 8008 and 36669 briefly returned `EHOSTUNREACH` after rollback. The oper
 confirmed the TV was on. Ordinary SSDP discovery saw the same address and SSH
 subsequently worked; no wake, restart or power command was sent. Cause is unproven.
 
+## Corrected reapply and integrated acceptance
+
+Commit `58482c3` passed 174 launcher tests, three packaging tests, repository and
+diff checks. LSP reported no errors (one file confirmed clean, three inconclusive).
+The packager correctly rejected a host-only image helper before rebuilding with
+the ARMv7 binary. The corrected archive is
+`bf902a0dec4c095f88b33677f10d3b0d073c53fb653eaf8125dea0453686bda1`, staged at
+`/APPS/alvidaa-plex-release-bf902a0dec4c`. Guarded reapply installed Home
+`bde9180bb6768d62040f437d5bb0bf4a5205723eb9483938d719c8036f490c95`, retaining
+journal `web-releases/release-SJTbT5` and the earlier rolled-back journal.
+
+The selected worker reported automatic `ready`, provenance version 1, exactly
+24 candidates, two personal picks, both posters available and zero image
+failures. Free `/var/local` was 117,747,712 bytes, above the unchanged reserve.
+The actual frontend selected the personal card in column two of Movies and Shows.
+HAL captures verified both portrait cards. Selecting the movie card through the
+remote opened native Plex's normal chooser. Read-only production selection
+confirmed its highlighted profile was already active; confirming that profile
+opened the matching movie details page with the Play button idle. Home returned
+normally. No playback or profile/PIN bypass occurred.
+
+Disable was repeated on this exact build. The personal card disappeared from the
+visible Shows row; the snapshot reported `disabled`, zero personal picks and
+zero personal image references while TMDB stayed configured. The approved
+automatic configuration was then restored through the owned worker. This is
+advertised removal, not secure erasure of retained artwork cache files.
+
 ## Still pending
 
-Deploy the corrected pool implementation, verify actual personal-card rendering
-and card-to-APC launch, and complete login/logout/account-switch acceptance.
-Full sign-out may require operator-assisted Plex reauthentication; do not inject
-credentials into Plex storage or bypass profile protection to complete a test.
+Actual login/logout/account-switch acceptance requires operator-assisted Plex
+authentication. Do not inject credentials into Plex storage or bypass profile
+protection to complete a test. A cold boot remains untested and unauthorized.

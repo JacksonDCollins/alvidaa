@@ -1,9 +1,9 @@
 # Plex library recommendations on VIDAA
 
-Status: implementation and offline tests pass. The operator's selected TV Plex
-session has also passed real-server library/artwork checks over verified LAN
-HTTPS. **The integration is not yet provisioned into the TV worker or deployed
-to Home.** See [session-reuse evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/22-plex-session-reuse.md).
+Status: deployed on the tested 55A7KAU. Automatic discovery, movie/show posters,
+movie-card-to-details launch without playback, disable/removal, and guarded
+rollback/reapply passed. Actual profile switching and logout/login remain pending.
+See [rollout evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/24-plex-parity-and-safe-rollout.md).
 
 This is an opt-in extension to the existing native web port. It adapts the Plex
 library logic from [canonical Free My TV `Recs.java`](https://github.com/simbasjungles/free-my-tv/blob/ed6be1ecaa98804c383fa021cdb648fd80f061f3/app/src/io/freemytv/Recs.java),
@@ -15,7 +15,8 @@ The original MIT notice is retained in [LICENSE](third-party/free-my-tv/LICENSE)
 
 - Reads movie and show library sections, taking up to eight recent items of each
   kind in section order, like upstream. One movie and one show are selected using
-  the hour as the rotation seed and mixed into the public recommendation pool.
+  the hour as the rotation seed, interleaved within each trending kind, then
+  alternated and capped with public recommendations at 24 titles.
 - Shows at most one personal Plex pick per tab selection. The existing upstream
   selection logic determines which candidates are visible at a given time.
 - Retrieves artwork through the private worker and existing bounded image cache.
@@ -23,8 +24,8 @@ The original MIT notice is retained in [LICENSE](third-party/free-my-tv/LICENSE)
   an authenticated Plex URL. Localized metadata uses the existing UI translators.
 - Works with an explicitly empty TMDB token as a Plex-only recommendation source.
 - Uses the existing native app lookup and guarded APC path to request a title's
-  details with autoplay disabled. The native-service route was verified on the TV;
-  clicking a deployed launcher card still needs acceptance.
+  details with autoplay disabled. A deployed movie card opened its matching
+  details page after Plex's normal active-profile confirmation, without playback.
 - Uses 500×750 portrait posters on narrow Plex cards, with backdrop fallback.
 
 It does not sign the TV's Plex app into an account, import watch progress, or
@@ -33,7 +34,7 @@ own appropriate login. Use a server account whose accessible libraries are
 appropriate for everyone using this launcher; app-launch PIN checks are not a
 substitute for restricting the recommendation account's library access.
 
-## Automatic active-account mode (not deployed)
+## Automatic active-account mode
 
 The worker now supports `plex_auto: true`, an approved `plex_url`, and
 `plex_server_id` (the matching server identity verified through HTTPS `/identity`).
@@ -129,6 +130,6 @@ redirect/body/token rejection, cancellation, backoff, selection, artwork caching
 Plex-only rendering, localized metadata, disconnect and package completeness.
 Real-server certificate/DNS, library and artwork transport checks passed using
 the selected TV user's server-scoped token; the ordinary native Plex launch was
-also exercised. Integrated on-TV card rendering, card-to-app launch and removal
-still need acceptance after safe deployment. A native-service title-details probe
-passed without playback; this does not replace deployed card-to-APC acceptance.
+also exercised. Deployed movie/show portrait rendering, movie-card-to-APC details,
+disable/removal and guarded rollback/reapply passed. Actual profile-switch and
+logout/login acceptance still require the operator's normal Plex authentication.
