@@ -8,6 +8,7 @@ const net=require('node:net');
 const crypto=require('node:crypto');
 const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
 const IMAGE=/^\/plex-[a-f0-9]{64}\.jpg$/;
+const TOKEN=/^[A-Za-z0-9._~-]{8,4096}$/;
 const ART=/^\/library\/metadata\/[1-9][0-9]{0,9}\/(art|thumb)(\/[0-9]{1,16})?$/;
 function serverOrigin(url){
  if(typeof url!=='string'||url.length>512)throw new Error('Invalid private Plex origin');
@@ -16,37 +17,28 @@ function serverOrigin(url){
     parsed.username||parsed.password||parsed.pathname!=='/'||parsed.search||parsed.hash||parsed.port==='0')throw Error('Plex requires its HTTPS plex.direct origin');
  return {origin:parsed.origin,hostname:parsed.hostname};
 }
-function configuration(value){
- const url=value.plex_url,token=value.plex_token;
- if((url===undefined||url==='')&&(token===undefined||token===''))return null;
- if(typeof token!=='string'||! /^[A-Za-z0-9._~-]{8,4096}$/.test(token))throw new Error('Invalid private Plex configuration');
- return {...serverOrigin(url),token};
-}
-function privateAddress(address){
- if(typeof address!=='string')return false;
- if(address.startsWith('::ffff:'))return privateAddress(address.slice(7));
- if(net.isIP(address)===6)return /^(fc|fd)/i.test(address);
- if(net.isIP(address)!==4)return false;
- const parts=address.split('.').map(Number);
- return parts[0]===10||(parts[0]===172&&parts[1]>=16&&parts[1]<=31)||(parts[0]===192&&parts[1]===168);
-}
-function period(time){const hour=new Date(time).getHours();return hour>=5&&hour<12?0:hour>=12&&hour<18?1:2;}
 function createPlex(config,options={}){
  // Revalidate even callers that did not come through the worker's credential reader.
- const checked=configuration({plex_url:config.origin,plex_token:config.token});
- const {origin,token,hostname:host}=checked;
+ const candidates=config.origins||[config.origin];
+ if(!Array.isArray(candidates)||!candidates.length||candidates.length>8)throw Error('Invalid Plex connections');
+ const hosts=new Map(candidates.map(value=>{const checked=serverOrigin(value);return [checked.origin,checked.hostname];}));
+ const origins=[...hosts.keys()];
+ const {token}=config;
+ if(typeof token!=='string'||!TOKEN.test(token))throw new Error('Invalid private Plex token');
+ let origin=null;
  const get=options.get||https.get,lookup=options.lookup||dns.lookup,now=options.now||Date.now;
- const requests=new Set(),imageFailures=new Map();let stopped=false,inflight=null,attempt=null,state='pending',picks=[],refs=new Map();
- function localLookup(name,opts,done){
-  if(name!==host){done(Error('Plex address rejected'));return;}
-  lookup(name,{all:true,verbatim:true},(error,addresses)=>{
-   if(error||!Array.isArray(addresses)){done(Error('Plex address unavailable'));return;}
-   const allowed=addresses.filter(x=>privateAddress(x.address)&&[4,6].includes(x.family));
-   if(!allowed.length){done(Error('Plex requires a LAN address'));return;}
-   if(opts&&opts.all)done(null,allowed);else done(null,allowed[0].address,allowed[0].family);
-  });
- }
- function request(path,image=false,signal){
+ const requests=new Set(),imageFailures=new Map();let stopped=false,inflight=null,state='pending',picks=[],refs=new Map();
+ function request(path,image=false,signal,target=origin){
+  const host=hosts.get(target);if(!host)return Promise.reject(Error('Unknown Plex connection'));
+  function plexLookup(name,opts,done){
+   if(name!==host){done(Error('Plex address rejected'));return;}
+   lookup(name,{all:true,verbatim:true},(error,addresses)=>{
+    if(error||!Array.isArray(addresses)){done(Error('Plex address unavailable'));return;}
+    const allowed=addresses.filter(x=>[4,6].includes(x.family)&&net.isIP(x.address)===x.family);
+    if(!allowed.length){done(Error('Plex address unavailable'));return;}
+    if(opts&&opts.all)done(null,allowed);else done(null,allowed[0].address,allowed[0].family);
+   });
+  }
   if(stopped)return Promise.reject(Error('Plex stopped'));
   return new Promise((resolve,reject)=>{
    let req,res,done=false,length=0;const chunks=[],limit=image?8*1024*1024:2*1024*1024;
@@ -60,7 +52,7 @@ function createPlex(config,options={}){
    requests.add(cancel);
    if(signal){signal.addEventListener('abort',cancel,{once:true});if(signal.aborted){cancel();return;}}
    try{
-    req=get(origin+path,{lookup:localLookup,rejectUnauthorized:true,headers:{
+    req=get(target+path,{lookup:plexLookup,rejectUnauthorized:true,headers:{
      Accept:image?'image/jpeg,image/png':'application/json','Accept-Encoding':'identity','X-Plex-Token':token,
      'User-Agent':'alvidaa-free-my-tv/native'
     }},response=>{
@@ -78,16 +70,24 @@ function createPlex(config,options={}){
    }catch{finish(Error('Plex request failed'));}
   });
  }
- async function json(path,signal){
-  const raw=await request(path,false,signal);let body;
+ async function json(path,signal,target=origin){
+  const raw=await request(path,false,signal,target);let body;
   try{body=JSON.parse(raw.toString('utf8')).MediaContainer;}catch{throw Error('Invalid Plex response');}
   if(!body||typeof body!=='object'||Array.isArray(body))throw Error('Invalid Plex response');
   return body;
  }
  function text(value,limit){return typeof value==='string'?value.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,limit):'';}
  async function load(signal){
-  const serverId=(await json('/identity',signal)).machineIdentifier;
-  if(typeof serverId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(serverId)||(config.serverId&&config.serverId!==serverId))throw Error('Plex server identity mismatch');
+  const turn=Math.trunc(now()/3600000);
+  let serverId;
+  for(const candidate of new Set([origin,...origins].filter(Boolean))){
+   try{
+    const id=(await json('/identity',signal,candidate)).machineIdentifier;
+    if(typeof id!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(id)||(config.serverId&&config.serverId!==id))throw Error('Plex server identity mismatch');
+    origin=candidate;serverId=id;break;
+   }catch{if(stopped||signal.aborted)throw Error('Plex connection cancelled');}
+  }
+  if(!serverId)throw Error('No authenticated Plex connection');
   const sections=(await json('/library/sections',signal)).Directory;
   if(!Array.isArray(sections)||sections.length>16)throw Error('Plex library limit exceeded');
   const lists={movie:[],tv:[]},nextRefs=new Map();
@@ -95,9 +95,9 @@ function createPlex(config,options={}){
    if(typeof path!=='string'||!ART.test(path))return null;
    const ref='/plex-'+digest(origin+'\n'+path)+'.jpg';nextRefs.set(ref,path);return ref;
   }
-  for(const section of sections){
-   const kind=section&&section.type==='movie'?'movie':section&&section.type==='show'?'tv':null;
-   if(!kind||lists[kind].length>=8)continue;
+  for(const kind of ['movie','tv']){
+   try{for(const section of sections){
+   if(!section||section.type!==(kind==='movie'?'movie':'show')||lists[kind].length>=8)continue;
    if(!/^[1-9][0-9]{0,9}$/.test(String(section.key)))throw Error('Invalid Plex section');
    const result=await json('/library/sections/'+section.key+'/all?sort=addedAt:desc&X-Plex-Container-Start=0&X-Plex-Container-Size=8',signal);
    const items=result.Metadata||[];
@@ -110,24 +110,25 @@ function createPlex(config,options={}){
     if(kind==='tv')parts.push('Series');if(genre)parts.push(genre);parts.push('Plex');
     const minutes=Math.floor(Number(item.duration)/60000),seasons=Number(item.childCount);
     const pick={id:-Number(item.ratingKey),kind,title,backdrop,poster:imageRef(item.thumb),logo:null,
-     genre,minutes:Number.isSafeInteger(minutes)&&minutes>0&&minutes<=1440?minutes:0,
-     seasons:Number.isSafeInteger(seasons)&&seasons>0&&seasons<=1000?seasons:0,
+     genre,minutes:Number.isSafeInteger(minutes)&&minutes>0?minutes:0,
+     seasons:Number.isSafeInteger(seasons)&&seasons>0?seasons:0,
      app:'plex',meta:parts.join(' · '),detailed:true,source:'plex',
      plexTitle:{providerId:serverId,ratingKey:String(item.ratingKey)}};
     if([token,origin].some(secret=>JSON.stringify(pick).includes(secret)))continue;
     lists[kind].push(pick);if(lists[kind].length===8)break;
    }
   }
-  const turn=Math.floor(now()/3600000),selected=[];
-  for(const list of Object.values(lists))if(list.length)selected.push(list[turn%list.length]);
+   }catch(error){if(kind==='movie'||signal.aborted||stopped)throw error;lists.tv=[];}
+  }
+  const selected=[];
+  for(const list of Object.values(lists))if(list.length)selected.push(list[((turn%list.length)+list.length)%list.length]);
   return {selected,nextRefs};
  }
  function refresh(){
   if(stopped)return Promise.resolve();
   if(inflight)return inflight;
-  const ttl=state==='ready'?6*3600000:5*60000,elapsed=attempt===null?Infinity:now()-attempt;
-  if(attempt!==null&&elapsed>=0&&elapsed<ttl&&(state!=='ready'||period(now())===period(attempt)))return Promise.resolve();
-  attempt=now();const controller=new AbortController();
+  // The canonical recommendation-list refresh owns scheduling, not this client.
+  const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),options.refreshTimeoutMs||30000);
   inflight=load(controller.signal).then(result=>{
    if(!stopped){picks=result.selected;refs=result.nextRefs;imageFailures.clear();state='ready';}
@@ -140,7 +141,7 @@ function createPlex(config,options={}){
   snapshot(){return {state,picks:picks.map(x=>({...x}))};},
   ownsImage(ref){return !stopped&&refs.has(ref);},
   image(ref,size){
-   const widths={w300:300,w500:500,w780:780,w1280:1280,original:1920,poster:500};
+   const widths={w300:1920,w500:1920,w780:1920,w1280:1920,original:1920,poster:500};
    const width=Object.hasOwn(widths,size)?widths[size]:0;
    if(!width||!refs.has(ref)||stopped)return Promise.reject(Error('Unknown Plex image'));
    if((imageFailures.get(ref)||0)>now())return Promise.reject(Error('Plex artwork unavailable'));
@@ -153,6 +154,7 @@ function createPlex(config,options={}){
 function merge(cache,plexPicks,tmdbConfigured){
  let recs={};try{recs=JSON.parse(cache||'{}');}catch{/* No cached TMDB recommendations. */}
  if(!recs||typeof recs!=='object'||Array.isArray(recs))recs={};
+ if(!tmdbConfigured)plexPicks=[];
  const base=tmdbConfigured&&Array.isArray(recs.picks)?recs.picks.filter(x=>x&&x.id>0&&x.source!=='plex'&&x.app!=='plex').slice(0,24):[];
  if(!plexPicks.length){
   // A serialized mixed pool has dropped public tail entries at the cap. Refill
@@ -172,4 +174,4 @@ function merge(cache,plexPicks,tmdbConfigured){
  fresh.forEach(add);
  return JSON.stringify({...recs,picks:out});
 }
-module.exports={configuration,serverOrigin,privateAddress,createPlex,merge,IMAGE};
+module.exports={serverOrigin,createPlex,merge,IMAGE,TOKEN};

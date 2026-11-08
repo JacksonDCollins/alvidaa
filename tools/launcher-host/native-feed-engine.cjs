@@ -17,7 +17,13 @@ function createEngine(options){
   const values=Object.create(null),timers=new Set();
   for(const key of CACHE_KEYS){
     const value=options.cache&&options.cache[key];
-    if(typeof value==='string'&&value.length<=2*1024*1024)values[key]=key==='fmtv.recs'?mergePlex(value,[],!!options.token):value;
+    if(typeof value==='string'&&value.length<=2*1024*1024){
+      values[key]=key==='fmtv.recs'?mergePlex(value,[],!!options.token):value;
+      if(key==='fmtv.recs'&&options.plex){
+        try{const recs=JSON.parse(values[key]);recs.listAt=0;recs.stamp='';values[key]=JSON.stringify(recs);}
+        catch{delete values[key];}
+      }
+    }
   }
   values['fmtv.prefs']=typeof context.prefs==='string'?context.prefs:'{}';
   const token=options.token||'';
@@ -61,15 +67,20 @@ function createEngine(options){
   new vm.Script(code,{filename:'pinned-free-my-tv-data.js'}).runInContext(sandbox,{timeout:3000});
   sandbox.Data.setApps(apps);
   sandbox.Data.onChange(changed);
-  const plex=options.plex&&sandbox.Data.appFor('plex')?options.plex:null;
+  const plex=token&&options.plex&&sandbox.Data.appFor('plex')?options.plex:null;
+  if(plex)window.nativePlex=(publicCache,done)=>{
+    plexPending=true;
+    Promise.resolve().then(()=>plex.refresh()).then(()=>{
+      if(stopped)return [];
+      const picks=plex.snapshot().picks.filter(p=>!JSON.stringify(p).includes(token));
+      return options.preparePlex?options.preparePlex(picks):[];
+    }).catch(()=>[]).then(picks=>{if(!stopped)done(mergePlex(publicCache,picks,true));})
+      .finally(()=>{plexPending=false;changed();});
+  };
   return {
     refresh(){
       if(stopped)return;
       sandbox.Data.refresh();
-      if(plex&&!plexPending){
-        plexPending=true;
-        Promise.resolve().then(()=>plex.refresh()).catch(()=>{}).finally(()=>{plexPending=false;changed();});
-      }
     },
     snapshot(){
       const cache={};
@@ -78,13 +89,14 @@ function createEngine(options){
         if(key==='fmtv.recs'){
           try{
             const recs=JSON.parse(values[key]);
-            if(typeof recs.stamp!=='string'||!/^native:[A-Z]{2}(:no-animation)?[01]{11}$/.test(recs.stamp))delete recs.stamp;
+            if(typeof recs.stamp!=='string'||!/^native:[A-Z]{2}(:plex)?(:no-animation)?[01]{11}$/.test(recs.stamp))delete recs.stamp;
             cache[key]=JSON.stringify(recs);
           }catch{/* Do not publish malformed persisted cache data. */}
         }else cache[key]=values[key];
       }
       const personal=plex?plex.snapshot():{state:options.plex?'app-unavailable':'disabled',picks:[]};
-      cache['fmtv.recs']=mergePlex(cache['fmtv.recs'],personal.picks.filter(p=>!token||!JSON.stringify(p).includes(token)),!!token);
+      // Keep this client's previous list during ordinary refresh, never across lost authorization.
+      if(!plex||!['ready','pending'].includes(personal.state)||!personal.picks.length)cache['fmtv.recs']=mergePlex(cache['fmtv.recs'],[],!!token);
       return {version:1,keyConfigured:!!token,plexConfigured:!!plex,plexState:personal.state,locationKnown:!!window.ZONES[context.zone],
         city:sandbox.Place.city,cache,error:sandbox.Data.recsError(),pending:pending+(plexPending?1:0)};
     },

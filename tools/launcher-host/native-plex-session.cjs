@@ -3,12 +3,12 @@
 const fs=require('node:fs');
 const crypto=require('node:crypto');
 const {createReader,identity}=require('./native-plex-storage.cjs');
-const {serverOrigin,configuration:privateConfiguration}=require('./native-feed-plex.cjs');
+const {serverOrigin,TOKEN}=require('./native-feed-plex.cjs');
 const SERVER=/^[A-Za-z0-9_-]{8,128}$/;
 function configuration(value){
  if(value.plex_auto===undefined||value.plex_auto===false)return null;
  if(value.plex_auto!==true||typeof value.plex_server_id!=='string'||!SERVER.test(value.plex_server_id))throw new Error('Automatic Plex needs an approved server identity');
- return {...serverOrigin(value.plex_url),serverId:value.plex_server_id};
+ return {serverId:value.plex_server_id};
 }
 function scalar(value){
  if(typeof value!=='string'||!value||value==='null')return null;
@@ -23,7 +23,7 @@ function own(value,key){return value&&typeof value==='object'&&typeof key==='str
 function select(settings,binding){
  const accountToken=scalar(settings.PlexAuthToken),active=scalar(settings.LastActiveUserUuid);
  if(!accountToken||!active)return {state:'signed-out'};
- if(!/^[A-Za-z0-9_-]{1,128}$/.test(active)||!/^[A-Za-z0-9._~-]{8,4096}$/.test(accountToken))return {state:'unavailable'};
+ if(!/^[A-Za-z0-9_-]{1,128}$/.test(active)||!TOKEN.test(accountToken))return {state:'unavailable'};
  const users=object(settings.OfflineUsersData),servers=object(settings.OfflineServersData),links=object(settings.OfflineUserServersData);
  if(!users||!servers||!links)return {state:'unavailable'};
  const selected=Object.entries(users).filter(([key,user])=>user&&typeof user==='object'&&!Array.isArray(user)&&
@@ -44,9 +44,17 @@ function select(settings,binding){
  if(tokens.size===0)return {state:'no-access'};
  if(tokens.size!==1)return {state:'unavailable'};
  try{
-  const credentials={...privateConfiguration({plex_url:binding.origin,plex_token:[...tokens][0]}),serverId:binding.serverId};
+  if(!Array.isArray(server.connections)||server.connections.length>32)return {state:'unavailable'};
+  const origins=[];
+  for(const connection of server.connections){
+   if(!connection||connection.isRelay)continue;
+   try{const {origin}=serverOrigin(connection.uri);if(!origins.includes(origin))origins.push(origin);}catch{/* Not a canonical secure Plex connection. */}
+  }
+  if(!origins.length||origins.length>8)return {state:'unavailable'};
+  const token=[...tokens][0];if(!TOKEN.test(token))return {state:'unavailable'};
+  const credentials={origins,token,serverId:binding.serverId};
   // This fingerprint stays private; never include it or account identifiers in snapshots.
-  const signature=crypto.createHash('sha256').update(JSON.stringify([active,credentials.origin,credentials.serverId,credentials.token])).digest('hex');
+  const signature=crypto.createHash('sha256').update(JSON.stringify([active,origins,credentials.serverId,token])).digest('hex');
   return {state:'ready',credentials,signature};
  }catch{return {state:'unavailable'};}
 }

@@ -38,7 +38,7 @@ test('worker revokes old-account cards before parsing context and never falls ba
  revoked();assert.equal(clients.length,2,'no manual or other cached account fallback on sign-out');assert.ok(!JSON.stringify(snapshot()).includes('fake-server'));
  worker.stop();assert.equal(sourceStopped,true);
  const config=JSON.parse(fs.readFileSync(credentials,'utf8'));config.plex_auto=false;fs.writeFileSync(credentials,JSON.stringify(config));
- assert.equal(readCredentials(credentials).plex,null,'explicitly disabled automatic mode must not reactivate an old manual token');
+ assert.equal(readCredentials(credentials).automatic,null,'disabled mode must not reactivate a legacy manual token');
  for(const mode of ['disabled','manual']){
   if(mode==='manual')delete config.plex_auto;
   fs.writeFileSync(credentials,JSON.stringify(config));fs.writeFileSync(contextFile,'broken');

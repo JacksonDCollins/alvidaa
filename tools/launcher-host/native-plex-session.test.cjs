@@ -8,7 +8,7 @@ const binding=()=>configuration({plex_auto:true,plex_url:ORIGIN,plex_server_id:S
 function settings(user='user-a'){
  return {PlexAuthToken:'fake-account-'+user,LastActiveUserUuid:user,
   OfflineUsersData:JSON.stringify({'user-a':{uuid:'user-a',authToken:'fake-account-user-a'},'user-b':{uuid:'user-b',authToken:'fake-account-user-b'}}),
-  OfflineServersData:JSON.stringify({[SERVER]:{id:SERVER,identifier:SERVER}}),
+  OfflineServersData:JSON.stringify({[SERVER]:{id:SERVER,identifier:SERVER,connections:[{uri:ORIGIN,isRelay:false}]}}),
   OfflineUserServersData:JSON.stringify({'user-a':{[SERVER]:{token:'fake-server-user-a'}},'user-b':{[SERVER]:{token:'fake-server-user-b'}}})};
 }
 const integer=n=>{const bytes=[];while(n>=128){bytes.push((n%128)|128);n=Math.floor(n/128);}bytes.push(n);return Buffer.from(bytes);};
@@ -34,17 +34,25 @@ function fixture(t,values=settings()){
  const obsolete=table([[internal(appKey('PlexAuthToken'),9999),Buffer.from('\x01fake-obsolete-token')]]);fs.writeFileSync(path.join(directory,'000004.ldb'),obsolete);
  return {directory,remove(key){const header=Buffer.alloc(12);header.writeBigUInt64LE(100n);header.writeUInt32LE(1,8);fs.writeFileSync(path.join(directory,'000003.log'),log(Buffer.concat([header,Buffer.from([0]),field(appKey(key))])));}};
 }
-test('automatic configuration requires a bound HTTPS server, not a fallback token',()=>{
+test('automatic configuration binds server identity; URL and token come only from the app',()=>{
  assert.equal(configuration({}),null);assert.equal(configuration({plex_auto:false}),null);
  assert.equal(binding().serverId,SERVER);assert.equal(Object.hasOwn(binding(),'token'),false);
- for(const value of [{plex_auto:'true'},{plex_auto:true,plex_url:ORIGIN},{plex_auto:true,plex_url:'http://localhost',plex_server_id:SERVER}])assert.throws(()=>configuration(value));
+ for(const value of [{plex_auto:'true'},{plex_auto:true,plex_url:ORIGIN}])assert.throws(()=>configuration(value));
+ assert.deepEqual(configuration({plex_auto:true,plex_server_id:SERVER,plex_url:'ignored-override'}),{serverId:SERVER});
 });
 test('selects only the active account server-scoped token, not its cloud token or another cached profile',()=>{
  const a=select(settings(),binding()),b=select(settings('user-b'),binding());
- assert.equal(a.state,'ready');assert.equal(a.credentials.token,'fake-server-user-a');assert.equal(b.credentials.token,'fake-server-user-b');assert.notEqual(a.signature,b.signature);
+ assert.equal(a.state,'ready');assert.deepEqual(a.credentials.origins,[ORIGIN]);assert.equal(a.credentials.token,'fake-server-user-a');assert.equal(b.credentials.token,'fake-server-user-b');assert.notEqual(a.signature,b.signature);
  const switched=settings();switched.LastActiveUserUuid='user-b';assert.equal(select(switched,binding()).state,'unavailable');
  const noAccess=settings();noAccess.OfflineUserServersData=JSON.stringify({'user-b':{[SERVER]:{token:'fake-server-user-b'}}});assert.equal(select(noAccess,binding()).state,'no-access');
  assert.equal(select(settings(),{...binding(),serverId:'different-server'}).state,'no-access');
+});
+test('only canonical app-advertised HTTPS endpoints are candidates; no saved URL fallback',()=>{
+ const value=settings(),remote='https://remote.fixture.plex.direct:32400';
+ value.OfflineServersData=JSON.stringify({[SERVER]:{id:SERVER,connections:[{uri:'http://localhost:9009'},{uri:remote},{uri:ORIGIN},{uri:remote},{uri:ORIGIN,isRelay:true}]}});
+ assert.deepEqual(select(value,binding()).credentials.origins,[remote,ORIGIN]);
+ value.OfflineServersData=JSON.stringify({[SERVER]:{id:SERVER,connections:[{uri:'http://localhost:9009'}]}});
+ assert.equal(select(value,binding()).state,'unavailable');
 });
 test('sign-out, incomplete account switches and malformed records never retain credentials',()=>{
  for(const key of ['PlexAuthToken','LastActiveUserUuid']){const value=settings();delete value[key];const result=select(value,binding());assert.equal(result.state,'signed-out');assert.equal(result.credentials,undefined);}

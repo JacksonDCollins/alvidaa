@@ -5,7 +5,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {createEngine}=require('./native-feed-engine.cjs');
 const {createMedia,atomic}=require('./native-feed-images.cjs');
-const {configuration:plexConfiguration,createPlex,merge:mergePlex}=require('./native-feed-plex.cjs');
+const {createPlex,merge:mergePlex}=require('./native-feed-plex.cjs');
 const {configuration:autoConfiguration,createSession}=require('./native-plex-session.cjs');
 function readJSON(file,limit){
  const stat=fs.lstatSync(file);if(!stat.isFile()||stat.size>limit)throw Error('Invalid worker input file');
@@ -18,8 +18,7 @@ function readCredentials(file){
  const data=readJSON(file,16384),value=data.tmdb_token;
  if(typeof value!=='string'||value.length>4096||/[\r\n]/.test(value)||
     (value.trim()&&!value.trim().startsWith('eyJ')))throw Error('A private TMDB read token or explicit empty string is required');
- const automatic=autoConfiguration(data),mode=Object.hasOwn(data,'plex_auto')?(automatic?'automatic':'disabled'):'manual';
- return {token:value.trim(),plex:mode==='manual'?plexConfiguration(data):null,automatic,mode};
+ return {token:value.trim(),automatic:autoConfiguration(data)};
 }
 function readToken(file){return readCredentials(file).token;}
 function renderableSnapshot(snapshot,render){
@@ -57,9 +56,9 @@ function start(options){
  if(!held.isFile()||held.dev!==expected.dev||held.ino!==expected.ino)throw Error('Worker lock descriptor was not inherited');
  const lock=lockPath+'.pid';
  atomic(lock,String(process.pid),0o600);
- const sessionSource=credentials.automatic?(options.sessionSource||createSession(credentials.automatic)):null;
+ const sessionSource=token&&credentials.automatic?(options.sessionSource||createSession(credentials.automatic)):null;
  const engineFactory=options.engineFactory||createEngine,mediaFactory=options.mediaFactory||createMedia,plexFactory=options.plexFactory||createPlex;
- let account={state:sessionSource||credentials.plex?'pending':'disabled'},accountSignature='',personal=null;
+ let account={state:sessionSource?'pending':'disabled'},accountSignature='',personal=null;
  let stopped=false,engine=null,media=null,context=null,signature='',lastRefresh=0,writing=null,polling=null;
  let imageBusy=false,imageAgain=false,lastPublished='',homeStamp='',render={images:{},media:{},imageFailures:0};
  let old={};try{old=readJSON(path.join(directory,'snapshot.json'),8*1024*1024);}catch{/* First start or damaged cache. */}
@@ -92,7 +91,7 @@ function start(options){
    const value=await owner.update(currentContext,cache);
    if(!stopped&&media===owner&&value){render=value;owner.collect();schedule();}
   }catch{/* Retain previous usable image mappings on processing failures. */}
-  finally{imageBusy=false;if(imageAgain&&!stopped)void images();}
+  finally{imageBusy=false;if(imageAgain&&!stopped&&engine&&engine.snapshot().pending===0)void images();}
  }
  function changed(){schedule();if(engine&&engine.snapshot().pending===0)void images();}
  function poll(){
@@ -125,12 +124,15 @@ function start(options){
     const cache=engine?engine.snapshot().cache:old.cache;
     // Context-only changes retain the old engine until construction succeeds.
     // Account changes above deliberately do not retain private recommendations.
-    const privateConfig=sessionSource?(account.state==='ready'?account.credentials:null):credentials.plex;
+    const privateConfig=sessionSource&&account.state==='ready'?account.credentials:null;
     const plex=privateConfig?plexFactory(privateConfig):null;
-    let replacement;
-    try{replacement=engineFactory({token,plex,context:next,cache,onChange:changed});}
+    let replacement,owner;
+    try{replacement=engineFactory({token,plex,context:next,cache,onChange:changed,preparePlex:async picks=>{
+     const value=await owner.preparePlex(picks);
+     if(stopped||media!==owner)return [];
+     render=value.render;return value.picks;
+    }});}
     catch(error){if(plex)plex.stop();throw error;}
-    let owner;
     try{
      owner=mediaFactory({directory:options.mediaDirectory||path.join(directory,'media'),iconRoot:options.iconRoot,processor:options.processor,plex,
       previousImages:render.images,uriBase:'file:///hisenseUI/var/local/free-my-tv/media/',onChange:value=>{if(!stopped&&media===owner){render=value;schedule();}}});

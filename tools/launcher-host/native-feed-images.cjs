@@ -98,17 +98,30 @@ function createMedia(options){
   if(stopped||!file)return;
   const personal=PLEX_IMAGE.test(file);
   if(personal&&(!options.plex||!options.plex.ownsImage(file)))throw Error('Unverified Plex artwork');
-  const url=personal?'plex:'+size+':'+file:photoURL(file,size),name=digest(processor+'\n'+url);
+  const canonicalSize=personal&&size!=='poster'?'original':size;
+  const url=personal?'plex:'+canonicalSize+':'+file:photoURL(file,size),name=digest(processor+'\n'+url);
   let bytes=cachedBytes(name);
   // Processor upgrades must remain usable offline. Reuse only a bounded,
   // hash-checked raw image from the previous snapshot's exact local cache URI.
-  const previous=options.previousImages&&options.previousImages[size+':'+file];
+  const previous=options.previousImages&&options.previousImages[canonicalSize+':'+file];
   if(!bytes&&typeof previous==='string'&&previous.startsWith(base)){
    const match=/^([a-f0-9]{64})-raw\.(png|jpg)$/.exec(previous.slice(base.length));
    if(match)bytes=cachedBytes(match[1]);
   }
   if(!bytes)bytes=personal?await options.plex.image(file,size):await (options.download||download)(url);
   const value=await prepare(url,bytes,'photo');if(!stopped)images[size+':'+file]=value.src;
+ }
+ async function preparePlex(picks){
+  const ready=[];
+  for(const pick of picks){
+   try{await photo(pick.backdrop,'original');}catch{continue;}
+   if(stopped)return {picks:[],render:{images:{},media:{},imageFailures:0}};
+   for(const size of ['w1280','w780','w300'])images[size+':'+pick.backdrop]=images['original:'+pick.backdrop];
+   const value={...pick};
+   if(value.poster){try{await photo(value.poster,'poster');}catch{value.poster=null;}}
+   if(!stopped)ready.push(value);
+  }
+  return {picks:ready,render:{images:{...images},media:{...media},imageFailures:0}};
  }
  async function update(context,cache){
   active.clear();let failures=0;
@@ -145,6 +158,9 @@ function createMedia(options){
   for(const [key,value] of Object.entries(media))if(!fs.existsSync(path.join(directory,path.basename(value.src))))delete media[key];
   for(const [key,value] of Object.entries(images))if(!fs.existsSync(path.join(directory,path.basename(value))))delete images[key];
  }
- return {update,collect,stop(){stopped=true;abort.abort();}};
+ // Like the original single I/O executor, preparation and ordinary cache updates serialize.
+ let work=Promise.resolve();
+ function queued(run){const next=work.then(run);work=next.catch(()=>{});return next;}
+ return {update:(...args)=>queued(()=>update(...args)),preparePlex:picks=>queued(()=>preparePlex(picks)),collect,stop(){stopped=true;abort.abort();}};
 }
 module.exports={photoURL,download,atomic,createMedia};

@@ -4,15 +4,15 @@ const {readCredentials,renderableSnapshot}=require('./native-feed-worker.cjs');
 const {createMedia}=require('./native-feed-images.cjs');
 const ref='/plex-'+'a'.repeat(64)+'.jpg',base='file:///hisenseUI/var/local/free-my-tv/media/';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');
-test('Plex credentials share only the existing mode-private server/keys configuration',t=>{
+test('automatic Plex uses private server identity configuration, never a manual URL/token override',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fmtv-plex-keys-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const keys=path.join(dir,'server/keys');fs.mkdirSync(keys,{recursive:true});const file=path.join(keys,'feed.json');
- const config={tmdb_token:'',plex_url:'https://192-168-50-20.server.plex.direct:32400',plex_token:'fake-plex-token'};
+ const config={tmdb_token:'',plex_auto:true,plex_server_id:'fixture-server',plex_url:'ignored-url',plex_token:'ignored-token'};
  fs.writeFileSync(file,JSON.stringify(config),{mode:0o600});const value=readCredentials(file);
- assert.equal(value.token,'');assert.equal(value.plex.token,config.plex_token);
+ assert.equal(value.token,'');assert.deepEqual(value.automatic,{serverId:'fixture-server'});assert.equal(Object.hasOwn(value,'plex'),false);
  fs.chmodSync(file,0o644);assert.throws(()=>readCredentials(file),/permissions/);fs.chmodSync(file,0o600);
- fs.writeFileSync(file,JSON.stringify({...config,plex_token:''}));assert.throws(()=>readCredentials(file));
- fs.writeFileSync(file,JSON.stringify({tmdb_token:'eyJ.existing-token'}));assert.equal(readCredentials(file).plex,null);
+ fs.writeFileSync(file,JSON.stringify({...config,plex_server_id:''}));assert.throws(()=>readCredentials(file));
+ fs.writeFileSync(file,JSON.stringify({tmdb_token:'eyJ.existing-token'}));assert.equal(readCredentials(file).automatic,null);
  const other=path.join(dir,'public.json');fs.copyFileSync(file,other);assert.throws(()=>readCredentials(other),/server\/keys/);
 });
 test('personal picks wait for local artwork; disabling removes them without modifying the raw engine snapshot',()=>{
@@ -51,9 +51,12 @@ test('Plex artwork uses only the authenticated private client and remains usable
  const cache=createMedia({directory:path.join(dir,'media'),iconRoot:icons,processor:process.env.NATIVE_IMAGE_HELPER,uriBase:base,
   plex:{ownsImage:value=>authorized&&value===ref,image:async(value,size)=>{assert.equal(value,ref);assert.ok(['w1280','w780','w300','original','poster'].includes(size));downloads++;return png;}},
   download:async()=>{throw Error('Personal images must not reach TMDB');}});
- t.after(()=>cache.stop());const data={'fmtv.recs':JSON.stringify({picks:[{source:'plex',backdrop:ref,poster:ref}]})};
- const first=await cache.update({apps:[]},data);assert.equal(first.imageFailures,0);assert.equal(downloads,5);
+ t.after(()=>cache.stop());const picks=[{source:'plex',backdrop:ref,poster:ref}],data={'fmtv.recs':JSON.stringify({picks})};
+ const prepared=await cache.preparePlex(picks);assert.deepEqual(prepared.picks,picks);assert.equal(downloads,2);
+ assert.equal(new Set(['w1280','w780','w300','original'].map(size=>prepared.render.images[size+':'+ref])).size,1,'one canonical original serves all backdrop sizes');
+ const first=await cache.update({apps:[]},data);assert.equal(first.imageFailures,0);assert.equal(downloads,2);
  assert.ok(first.images['original:'+ref].startsWith(base));assert.ok(first.images['poster:'+ref].startsWith(base));
- const again=await cache.update({apps:[]},data);assert.equal(again.imageFailures,0);assert.equal(downloads,5);
- authorized=false;const denied=await cache.update({apps:[]},data);assert.equal(denied.imageFailures,5);assert.equal(downloads,5,'even cached art requires fresh metadata authorization');
+ const again=await cache.update({apps:[]},data);assert.equal(again.imageFailures,0);assert.equal(downloads,2);
+ authorized=false;assert.deepEqual((await cache.preparePlex(picks)).picks,[]);
+ const denied=await cache.update({apps:[]},data);assert.equal(denied.imageFailures,5);assert.equal(downloads,2,'even cached art requires fresh metadata authorization');
 });

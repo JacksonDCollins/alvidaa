@@ -71,7 +71,7 @@ function templateTree(html){
 function dataSource(source){
   // Upstream persists a token suffix in its cache stamp. Do not copy even a
   // partial credential into browser-readable cache files.
-  source=replaceOnce(source,"KEY.length + ':' + KEY.slice(-6) + ':' + REGION","'native:' + REGION");
+  source=replaceOnce(source,"KEY.length + ':' + KEY.slice(-6) + ':' + REGION","'native:' + REGION + (window.nativePlex ? ':plex' : '')");
   // Preserve trending provenance so Plex joins that bucket before the 24-title cap.
   source=replaceOnce(source,"  var cache = stored('recs') || {};","  var cache = stored('recs') || {}, plexPoolVersion = cache.plexPoolVersion || 0;\n  if (plexPoolVersion !== 1) { cache.listAt = 0; cache.stamp = ''; }");
   source=replaceOnce(source,'{picks: picks, listAt: listAt, period: period, lang: listLang, stamp: stamp}','{picks: picks, listAt: listAt, period: period, lang: listLang, stamp: stamp, plexPoolVersion: plexPoolVersion}');
@@ -83,8 +83,15 @@ function dataSource(source){
       for (var a = 0; a < installed.length; a++) if (/^plex(?:$| |:)/i.test(installed[a].title)) return installed[a];
       return null;
     }`);
-  source=replaceOnce(source,'    if (!KEY) return list;',"    if (!KEY && !picks.some(function(p) { return p.source === 'plex'; })) return list;");
-  source=replaceOnce(source,'      var p = picks[i];',"      var p = picks[i];\n      if (!KEY && p.source !== 'plex') continue;");
+  source=replaceOnce(source,'  function fetchList(done) {',`  function fetchList(done) {
+    fetchPublicList(function(error) {
+      if (error || !window.nativePlex) { done(error); return; }
+      window.nativePlex(JSON.stringify({picks:picks,plexPoolVersion:plexPoolVersion}), function(value) {
+        picks = JSON.parse(value).picks; done(null);
+      });
+    });
+  }
+  function fetchPublicList(done) {`);
   source=replaceOnce(source,'var hour = Math.floor(Date.now() / 3600000), out = [], seen = {};',
     'var hour = Math.floor(Date.now() / 3600000), out = [], seen = {}, personalShown = false;');
   source=replaceOnce(source,'      if (!seen[f]) { seen[f] = true; out.push(q); }',

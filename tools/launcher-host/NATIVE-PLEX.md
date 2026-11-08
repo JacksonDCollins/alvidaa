@@ -1,140 +1,88 @@
-# Plex library recommendations on VIDAA
+# Plex recommendations: canonical behavior, automatic TV credentials
 
-Status: deployed on the tested 55A7KAU. Automatic discovery, movie/show posters,
-movie-card-to-details launch without playback, disable/removal, and guarded
-rollback/reapply passed. Actual logout/login passed; profile switching remains unverified after a native
-Plex loading hang.
-See [rollout evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/24-plex-parity-and-safe-rollout.md).
+The scope is the Plex library behavior from Android Free My TV's
+[`Recs.java`](https://github.com/simbasjungles/free-my-tv/blob/ed6be1ecaa98804c383fa021cdb648fd80f061f3/app/src/io/freemytv/Recs.java),
+with credentials obtained from the logged-in native Plex app instead of supplied
+URL/token fields. This is not a port of every Android feature.
 
-This is an opt-in extension to the existing native web port. It adapts the Plex
-library logic from [canonical Free My TV `Recs.java`](https://github.com/simbasjungles/free-my-tv/blob/ed6be1ecaa98804c383fa021cdb648fd80f061f3/app/src/io/freemytv/Recs.java),
-not merely the Plex app icon. The pinned web frontend remains unchanged on disk;
-its build-time adapters add personal picks and recognize the installed Plex app.
-The original MIT notice is retained in [LICENSE](third-party/free-my-tv/LICENSE).
+The narrowed implementation is locally tested; its connection adapter passed a
+read-only real-TV connection/library/artwork probe before subsequent offline-only
+refinements. Its release acceptance is still pending; see
+[scope correction evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/25-plex-scope-correction.md).
+Earlier deployed acceptance is recorded in
+[finding 24](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/24-plex-parity-and-safe-rollout.md).
 
-## What it does
+## Recommendation behavior
 
-- Reads movie and show library sections, taking up to eight recent items of each
-  kind in section order, like upstream. One movie and one show are selected using
-  the hour as the rotation seed, interleaved within each trending kind, then
-  alternated and capped with public recommendations at 24 titles.
-- Shows at most one personal Plex pick per tab selection. The existing upstream
-  selection logic determines which candidates are visible at a given time.
-- Retrieves artwork through the private worker and existing bounded image cache.
-  Personal cards wait until local artwork is available; the browser never fetches
-  an authenticated Plex URL. Localized metadata uses the existing UI translators.
-- Works with an explicitly empty TMDB token as a Plex-only recommendation source.
-- Uses the existing native app lookup and guarded APC path to request a title's
-  details with autoplay disabled. A deployed movie card opened its matching
-  details page after Plex's normal active-profile confirmation, without playback.
-- Uses 500×750 portrait posters on narrow Plex cards, with backdrop fallback.
+- Use the existing recommendation-list refresh, including its six-hour interval,
+  morning/afternoon/night periods, language/source changes and clock rollback.
+  There is no independent Plex metadata-refresh loop.
+- Select one of the newest eight library movies and shows, in section order,
+  using the hour as the selection seed.
+- Prepare artwork before adding a personal pick. Interleave each kind into the
+  trending titles, alternate kinds, then fill with new releases up to 24 titles.
+- Show at most one personal Plex surprise per tab, not a guaranteed card each hour.
+- Use one 1920×1080 backdrop and an optional 500×750 portrait poster. Without a
+  poster, use the backdrop; without usable backdrop artwork, omit that pick.
+- Open the title's details, not playback. On VIDAA this uses the registered Plex
+  app and native APC permission checks rather than an Android intent. Plex's own
+  profile chooser and protections remain intact.
+- Require the existing TMDB configuration, as the reference implementation does.
+  The added Plex-only mode has been removed.
 
-It does not sign the TV's Plex app into an account, import watch progress, or
-implement Continue Watching. Those are separate features. The TV app needs its
-own appropriate login. Use a server account whose accessible libraries are
-appropriate for everyone using this launcher; app-launch PIN checks are not a
-substitute for restricting the recommendation account's library access.
+There is no Continue Watching, watch-progress integration or separate Plex service.
+The existing on-TV feed worker performs the background work that Android performs
+inside its app. Pinned web source files remain pristine; narrow adapters connect
+that presentation to the Plex logic and VIDAA platform.
 
-## Automatic active-account mode
+## Automatic credential adapter
 
-The worker now supports `plex_auto: true`, an approved `plex_url`, and
-`plex_server_id` (the matching server identity verified through HTTPS `/identity`).
-Keep `tmdb_token` unchanged. No `plex_token` is required in this mode, and an old
-manual token is never used as fallback. Setting `plex_auto: false` explicitly
-disables Plex even if old manual fields remain; restart the owned worker after
-configuration changes.
+The existing private `server/keys/` feed configuration enables `plex_auto: true`
+and records the approved `plex_server_id`. Keep `tmdb_token` unchanged. Do not
+supply a Plex URL/token: legacy `plex_url` and `plex_token` overrides are ignored.
+The server identity is a selection boundary, not an account credential. Existing
+deployments should retain legacy private fields for rollback to older code; the
+new code ignores them. Do not remove fields an older installed release requires.
 
-The worker follows only the TV app's selected authenticated account and that
-account's access to the approved server. It reads the live storage without writes
-or locks, and drops personal picks on observed logout, account changes or uncertain
-reads. It does not automatically choose an unknown server, sign in, bypass a PIN,
-or follow another cached profile. Discovery is polled, not a synchronous Plex event.
+A bounded, read-only reader follows the native app's active authenticated user and
+that user's server-access record. Only that user's server-scoped token and the
+approved server's advertised HTTPS `*.plex.direct` connections are candidates.
+The adapter tries those connections, verifies the expected server identity, and
+reuses the successful connection. Like the original, remote Plex addresses are
+permitted; there is no added private-IP restriction.
 
-This implementation passed offline account-switch/failure tests and a read-only
-TV selector probe. Deployed logout/login passed: personal picks and artwork
-references disappeared about four seconds after the monitor observed sign-out,
-and returned after successful sign-in. Profile-switch acceptance remains blocked
-by a reported native Plex loading hang; its cause is unproven. Original
-Android title navigation, portrait posters and refresh alignment are implemented;
-see [rollout evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/24-plex-parity-and-safe-rollout.md) for the remaining integrated checks. See [automatic-session evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/23-plex-automatic-session.md).
+TLS certificate verification remains enabled. Tokens travel only in headers,
+redirects are rejected, and request/file/image budgets remain bounded. Tokens,
+authenticated URLs and account fingerprints never enter the launcher snapshot.
+No other cached profile, manual URL or manual token is a fallback. No server
+configuration, app storage, login or PIN is changed by the adapter.
 
-## Connection and credential policy
+On account changes, logout or uncertain storage reads, old personal recommendations
+are revoked. Published artwork mappings must belong to current picks; only their
+reachable media and native app icons are published. Polling is not synchronous
+with Plex's in-memory authentication. Retained artwork files are ordinary cache,
+not secure erasure and not authorization for a new session.
 
-For legacy manual mode (no `plex_auto` field), the existing private feed JSON
-in `server/keys/` accepts two optional fields:
+## Disable and recovery
 
-- `plex_url`: the server's HTTPS `*.plex.direct` origin, including its port.
-  No path, query, fragment or embedded username/password is accepted.
-- `plex_token`: a restricted Plex user's token. Never paste it into chat, commit
-  it, include it in an archive, or add it to browser `CONFIG`.
+Set `plex_auto: false` and restart through the existing owned-worker controller.
+Leave TMDB, preferences and native app data untouched. Code rollback uses the
+normal release coordinator and retained recovery journals; do not bypass its
+concurrency checks or lower the storage reserve.
 
-Keep the existing `tmdb_token` field unchanged, or explicitly set it to `""` if
-TMDB is not wanted. Both Plex fields absent/empty disables the integration; a
-partially configured pair is rejected. The file must remain mode 0600 in the
-private `server/keys/` directory. Do not overwrite the existing TMDB credential
-when adding Plex.
+No Plex-server change is required or authorized for this integration. The earlier
+private rollback record for a proposed advertisement edit was never applied.
 
-Use Plex's secure local connection address, as described in the canonical
-project's Plex setup instructions. This adapter deliberately supports **LAN
-servers only**: DNS results must be private IPv4 or IPv6 ULA addresses. Loopback,
-link-local, public addresses, plain HTTP and certificate-verification bypasses
-are not supported. A router's DNS-rebinding protection may require a narrowly
-scoped exception for your exact Plex hostname; do not disable DNS protection
-or change TV networking as an automatic setup step.
+## Verification boundary
 
-The token is sent only in `X-Plex-Token` to the configured HTTPS origin. Redirects
-are rejected, TLS validation stays enabled, and errors exposed in snapshots are
-generic. Only validated relative Plex artwork paths can reach the image
-transcoder. Browser-visible artwork references are opaque hashes, not server
-addresses or authenticated URLs.
+Tests cover active-account selection, app-only connection fallback, TLS/header/
+redirect boundaries, canonical list scheduling, artwork preparation and sharing,
+revocation, malformed state, late callbacks and package completeness. The new
+connection path passed a real-TV probe with the configured URL/token overrides
+removed in memory: movie/show metadata, original artwork and a poster succeeded
+using only app-provided connections.
 
-This does not make the rooted firmware a security sandbox. Personal titles and
-cached artwork are intentionally readable by the TV UI. Resolve the documented
-legacy reverse-shell startup before placing additional personal credentials on
-the TV; use the least-privileged Plex account practical for the intended libraries.
-
-## Bounds and lifecycle
-
-Metadata is limited to 16 sections, eight returned items per queried section,
-and 2 MiB per response. Images are limited to 8 MiB per download and use the
-existing image processor's pixel/time/storage bounds. Requests time out after
-10 seconds; a metadata refresh has a 30-second budget. Successful metadata is
-cached for six hours, with refresh at local 05:00/12:00/18:00 period changes and
-clock rollback. Failures back off for five minutes. Failed artwork requests also
-back off for five minutes rather than hammering a sleeping server.
-
-No Plex requests occur when its app is absent from the native app list. Worker
-shutdown aborts outstanding Plex requests. A worker/context restart requires
-fresh authenticated metadata before personal picks can reappear; persisted
-personal picks are not accepted as authorization for a new account/session.
-
-There is no additional HTTP listener, MQTT session or PC runtime dependency.
-
-## Deployment and teardown
-
-The updated frontend **and** worker modules must be packaged together. The
-release verifier and package include `native-feed-plex.cjs`,
-`native-plex-session.cjs` and `native-plex-storage.cjs`.
-Use the existing guarded release process, not manual writes over the running
-worker. Current TV storage headroom needs review before any full release update;
-never lower the 64 MiB reserve or silently delete recovery history to make room.
-
-To disable automatic mode: set `plex_auto: false` and restart the owned worker.
-For legacy manual mode: remove both Plex fields (preserving TMDB), or set both to empty
-strings, then restart the owned feed worker through its normal service controller.
-The new snapshot drops personal picks. Cached artwork may remain on disk under
-normal image-cache retention; disabling is not a secure-erase operation.
-Configuration changes and any backup of them must remain inside `server/keys/`.
-Reverting code uses the existing release/Home recovery mechanisms.
-
-## Verification still required
-
-Offline tests cover credential permissions, request boundaries, private DNS,
-redirect/body/token rejection, cancellation, backoff, selection, artwork caching,
-Plex-only rendering, localized metadata, disconnect and package completeness.
-Real-server certificate/DNS, library and artwork transport checks passed using
-the selected TV user's server-scoped token; the ordinary native Plex launch was
-also exercised. Deployed movie/show portrait rendering, movie-card-to-APC details,
-disable/removal, guarded rollback/reapply and actual logout/login passed.
-Profile switching remains unverified: the operator encountered a native Plex
-loading hang and returned Home before a completed account change was observed.
+Previously deployed logout/login, card rendering, movie details, disable and
+rollback passed. Native profile switching hung during the operator's attempt and
+remains unverified; its cause is not established. The narrower release must be
+accepted separately rather than inheriting all earlier deployment results.

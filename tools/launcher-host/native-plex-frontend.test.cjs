@@ -14,14 +14,17 @@ function frontend(){
 const picks=[{id:1,kind:'movie',title:'Public movie',app:'netflix',detailed:true},
  {id:-2,kind:'movie',title:'Personal movie',app:'plex',source:'plex',detailed:true,minutes:95,genre:'Drama',poster:'/plex-fixture.jpg',plexTitle:{providerId:'fixture-server',ratingKey:'2'}},
  {id:-3,kind:'tv',title:'Personal show',app:'plex',source:'plex',detailed:true,seasons:3,genre:'Drama'}];
-test('actual web data adapter shows Plex-only picks without pretending TMDB is configured',()=>{
+test('actual web data retains the original TMDB requirement and personal-card metadata',()=>{
  const s=frontend();s.Data.nativeSnapshot({'fmtv.recs':JSON.stringify({picks})},'',false);
- assert.equal(s.Data.picks('movie')[0].plexTitle.ratingKey,'2');assert.equal(s.Data.picks('movie')[0].poster,'/plex-fixture.jpg');
- assert.equal(s.Data.hasKey(),false);assert.equal(s.Data.appFor('plex').id,'app:7');
- assert.deepEqual(Array.from(s.Data.picks('movie'),x=>x.id),[-2]);assert.deepEqual(Array.from(s.Data.picks('tv'),x=>x.id),[-3]);
- assert.equal(s.Data.picks(null).length,1,'one Plex pick per tab');
- assert.equal(s.Data.showcase().length,2,'both kinds are available to the screensaver');
- assert.match(s.Data.picks('movie')[0].meta,/1h 35m.*Plex/);
+ assert.equal(s.Data.hasKey(),false);assert.equal(s.Data.picks(null).length,0);assert.equal(s.Data.showcase().length,0);
+ s.Data.nativeSnapshot({'fmtv.recs':JSON.stringify({picks})},'',true);
+ const movie=Array.from(s.Data.picks('movie')).find(p=>p.source==='plex');
+ assert.equal(movie.plexTitle.ratingKey,'2');assert.equal(movie.poster,'/plex-fixture.jpg');
+ assert.equal(s.Data.appFor('plex').id,'app:7');
+ assert.deepEqual(Array.from(s.Data.picks('tv'),x=>x.id),[-3]);
+ assert.equal(Array.from(s.Data.picks(null)).filter(p=>p.source==='plex').length,1);
+ assert.equal(Array.from(s.Data.showcase()).filter(p=>p.source==='plex').length,2);
+ assert.match(movie.meta,/1h 35m.*Plex/);
  assert.ok(s.Data.picks('tv')[0].meta.includes(s.tr('Series')));
  s.Data.setApps([{id:'app:7',title:'Plexiglass'}]);assert.equal(s.Data.appFor('plex'),null);assert.equal(s.Data.picks(null).length,0);
 });
