@@ -5,21 +5,32 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {createEngine}=require('./native-feed-engine.cjs');
 const {createMedia,atomic}=require('./native-feed-images.cjs');
+const {configuration:plexConfiguration,createPlex}=require('./native-feed-plex.cjs');
 function readJSON(file,limit){
  const stat=fs.lstatSync(file);if(!stat.isFile()||stat.size>limit)throw Error('Invalid worker input file');
  try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch{throw Error('Invalid worker JSON');}
 }
-function readToken(file){
+function readCredentials(file){
  const resolved=fs.realpathSync(file);
  if(!resolved.includes(path.sep+'server'+path.sep+'keys'+path.sep))throw Error('Credentials must remain in server/keys');
  const stat=fs.lstatSync(file);if(!stat.isFile()||(stat.mode&0o077)!==0)throw Error('Private credential permissions required');
- const value=readJSON(file,16384).tmdb_token;
- if(typeof value==='string'&&!value.trim())return ''; // Explicit offline/no-TMDB configuration.
- if(typeof value!=='string'||value.length>4096||!value.trim().startsWith('eyJ')||/[\r\n]/.test(value.trim()))throw Error('A private TMDB read token is required');
- return value.trim();
+ const data=readJSON(file,16384),value=data.tmdb_token;
+ if(typeof value!=='string'||value.length>4096||/[\r\n]/.test(value)||
+    (value.trim()&&!value.trim().startsWith('eyJ')))throw Error('A private TMDB read token or explicit empty string is required');
+ return {token:value.trim(),plex:plexConfiguration(data)};
+}
+function readToken(file){return readCredentials(file).token;}
+function renderableSnapshot(snapshot,render){
+ const cache={...snapshot.cache};let recs={};
+ try{const value=JSON.parse(cache['fmtv.recs']||'{}');if(value&&typeof value==='object'&&!Array.isArray(value))recs=value;}catch{/* Discard damaged recommendation data. */}
+ // Like upstream withImages(), do not advertise a personal title without local artwork.
+ recs.picks=Array.isArray(recs.picks)?recs.picks.filter(p=>p&&(p.source!=='plex'||
+  ['w1280','w780','w300','original'].some(size=>/^file:\/\/\/hisenseUI\/var\/local\/free-my-tv\/media\/[a-f0-9]{64}-raw\.(png|jpg)$/.test(render.images[size+':'+p.backdrop]||'')))):[];
+ cache['fmtv.recs']=JSON.stringify(recs);
+ return {...snapshot,cache,...render};
 }
 function start(options){
- const directory=path.resolve(options.directory),token=readToken(options.credentials);
+ const directory=path.resolve(options.directory),credentials=readCredentials(options.credentials),token=credentials.token;
  fs.mkdirSync(directory,{recursive:true,mode:0o755});
  const lockPath=process.env.ALVIDAA_NATIVE_FEED_LOCK_PATH;
  const descriptor=Number(process.env.ALVIDAA_NATIVE_FEED_LOCK_FD);
@@ -35,7 +46,7 @@ function start(options){
  function publish(){
   writing=null;if(stopped||!engine)return;
   try{
-   const encoded=JSON.stringify({...engine.snapshot(),...render,workerPid:process.pid});
+   const encoded=JSON.stringify({...renderableSnapshot(engine.snapshot(),render),workerPid:process.pid});
    if(encoded!==lastPublished){atomic(path.join(directory,'snapshot.json'),encoded);lastPublished=encoded;}
   }
   catch{/* Preserve the last good snapshot on disk failures; keep local Home alive. */}
@@ -48,7 +59,7 @@ function start(options){
   const owner=media,current=engine,currentContext=context;
   try{
    const state=current.snapshot();
-   const cache=state.keyConfigured?state.cache:{...state.cache,'fmtv.recs':null};
+   const cache=state.keyConfigured||state.plexConfigured?state.cache:{...state.cache,'fmtv.recs':null};
    const value=await owner.update(currentContext,cache);
    if(!stopped&&media===owner&&value){render=value;owner.collect();schedule();}
   }catch{/* Retain previous usable image mappings on processing failures. */}
@@ -74,10 +85,13 @@ function start(options){
    if(nextSignature!==signature){
     const cache=engine?engine.snapshot().cache:old.cache;
     // Construct the new engine before releasing a usable old one.
-    const replacement=createEngine({token,context:next,cache,onChange:changed});
+    const plex=credentials.plex?createPlex(credentials.plex):null;
+    let replacement;
+    try{replacement=createEngine({token,plex,context:next,cache,onChange:changed});}
+    catch(error){if(plex)plex.stop();throw error;}
     let owner;
     try{
-     owner=createMedia({directory:options.mediaDirectory||path.join(directory,'media'),iconRoot:options.iconRoot,processor:options.processor,
+     owner=createMedia({directory:options.mediaDirectory||path.join(directory,'media'),iconRoot:options.iconRoot,processor:options.processor,plex,
       previousImages:render.images,uriBase:'file:///hisenseUI/var/local/free-my-tv/media/',onChange:value=>{if(!stopped&&media===owner){render=value;schedule();}}});
     }catch(error){replacement.stop();throw error;}
     if(engine)engine.stop();if(media)media.stop();
@@ -112,4 +126,4 @@ if(require.main===module){
   for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{worker.stop();process.exit(0);});
  }catch{console.error('Native feed worker could not start; check private configuration and worker ownership');process.exit(1);}
 }
-module.exports={start,readToken,readJSON};
+module.exports={start,readToken,readCredentials,readJSON,renderableSnapshot};

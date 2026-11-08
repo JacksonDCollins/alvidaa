@@ -6,6 +6,7 @@ const crypto=require('node:crypto');
 const {execFile}=require('node:child_process');
 const {promisify}=require('node:util');
 const run=promisify(execFile);
+const {IMAGE:PLEX_IMAGE}=require('./native-feed-plex.cjs');
 const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
 const ICON_URI='file:///hisenseUI/var/local/storeAppIcon/';
 function photoURL(file,size){
@@ -95,7 +96,9 @@ function createMedia(options){
  }
  async function photo(file,size){
   if(stopped||!file)return;
-  const url=photoURL(file,size),name=digest(processor+'\n'+url);
+  const personal=PLEX_IMAGE.test(file);
+  if(personal&&(!options.plex||!options.plex.ownsImage(file)))throw Error('Unverified Plex artwork');
+  const url=personal?'plex:'+size+':'+file:photoURL(file,size),name=digest(processor+'\n'+url);
   let bytes=cachedBytes(name);
   // Processor upgrades must remain usable offline. Reuse only a bounded,
   // hash-checked raw image from the previous snapshot's exact local cache URI.
@@ -104,7 +107,7 @@ function createMedia(options){
    const match=/^([a-f0-9]{64})-raw\.(png|jpg)$/.exec(previous.slice(base.length));
    if(match)bytes=cachedBytes(match[1]);
   }
-  if(!bytes)bytes=await (options.download||download)(url);
+  if(!bytes)bytes=personal?await options.plex.image(file,size):await (options.download||download)(url);
   const value=await prepare(url,bytes,'photo');if(!stopped)images[size+':'+file]=value.src;
  }
  async function update(context,cache){

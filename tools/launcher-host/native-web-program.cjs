@@ -71,7 +71,20 @@ function templateTree(html){
 function dataSource(source){
   // Upstream persists a token suffix in its cache stamp. Do not copy even a
   // partial credential into browser-readable cache files.
-  return replaceOnce(source,"KEY.length + ':' + KEY.slice(-6) + ':' + REGION","'native:' + REGION");
+  source=replaceOnce(source,"KEY.length + ':' + KEY.slice(-6) + ':' + REGION","'native:' + REGION");
+  // Plex is a personal-library source, not TMDB's free Plex catalogue.
+  source=replaceOnce(source,'  function appFor(key) {',`  function appFor(key) {
+    if (key === 'plex') {
+      for (var a = 0; a < installed.length; a++) if (/^plex(?:$| |:)/i.test(installed[a].title)) return installed[a];
+      return null;
+    }`);
+  source=replaceOnce(source,'    if (!KEY) return list;',"    if (!KEY && !picks.some(function(p) { return p.source === 'plex'; })) return list;");
+  source=replaceOnce(source,'      var p = picks[i];',"      var p = picks[i];\n      if (!KEY && p.source !== 'plex') continue;");
+  source=replaceOnce(source,'var hour = Math.floor(Date.now() / 3600000), out = [], seen = {};',
+    'var hour = Math.floor(Date.now() / 3600000), out = [], seen = {}, personalShown = false;');
+  source=replaceOnce(source,'      if (!seen[f]) { seen[f] = true; out.push(q); }',
+    "      if (!seen[f] && !(q.source === 'plex' && personalShown)) { seen[f] = true; if (q.source === 'plex') personalShown = true; out.push(q); }");
+  return source;
 }
 const HYDRATE=`
     nativeSnapshot: function (values, error, keyConfigured) {
@@ -81,6 +94,18 @@ const HYDRATE=`
       if (w && w.place === PLACE) { weather = parseWeather(w.body); weatherAt = w.at; }
       if (p && p.quote === QUOTE && parsePrices(p.body)) pricesAt = p.at;
       if (r) { picks = r.picks || []; listAt = r.listAt || 0; period = r.period; listLang = r.lang || ''; stamp = r.stamp || ''; }
+      for (var i = 0; i < picks.length; i++) {
+        var item = picks[i];
+        if (item.source !== 'plex') continue;
+        var parts = [];
+        if (item.kind === 'tv') parts.push(tr('Series'));
+        if (item.genre) parts.push(genre(item.genre));
+        if (item.kind === 'movie' && item.minutes > 0) {
+          var hours = Math.floor(item.minutes / 60), minutes = item.minutes % 60;
+          parts.push(hours ? trf('{h}h {m}m', {h:hours,m:minutes}) : trf('{m}m', {m:minutes}));
+        } else if (item.kind === 'tv' && item.seasons > 0) parts.push(plural('plural|one:{n} season|other:{n} seasons', item.seasons));
+        parts.push('Plex'); item.meta = parts.join(' · ');
+      }
       recsError = error || ''; changed();
     },
 `;

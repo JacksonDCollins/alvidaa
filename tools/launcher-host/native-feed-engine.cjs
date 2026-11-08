@@ -3,6 +3,7 @@
 const vm=require('node:vm');
 const {readSources,dataSource}=require('./native-web-program.cjs');
 const {canonical,requestJson}=require('./native-feed-http.cjs');
+const {merge:mergePlex}=require('./native-feed-plex.cjs');
 const CACHE_KEYS=new Set(['fmtv.weather','fmtv.prices','fmtv.recs']);
 function createEngine(options){
   const sources=options.sources||readSources();
@@ -12,11 +13,11 @@ function createEngine(options){
     if(typeof app.id!=='string'||app.id.length>256||typeof app.title!=='string'||app.title.length>512)throw Error('Invalid native app metadata');
     return {id:app.id,title:app.title};
   });
-  let stopped=false,pending=0;
+  let stopped=false,pending=0,plexPending=false;
   const values=Object.create(null),timers=new Set();
   for(const key of CACHE_KEYS){
     const value=options.cache&&options.cache[key];
-    if(typeof value==='string'&&value.length<=2*1024*1024)values[key]=value;
+    if(typeof value==='string'&&value.length<=2*1024*1024)values[key]=key==='fmtv.recs'?mergePlex(value,[],!!options.token):value;
   }
   values['fmtv.prefs']=typeof context.prefs==='string'?context.prefs:'{}';
   const token=options.token||'';
@@ -60,8 +61,16 @@ function createEngine(options){
   new vm.Script(code,{filename:'pinned-free-my-tv-data.js'}).runInContext(sandbox,{timeout:3000});
   sandbox.Data.setApps(apps);
   sandbox.Data.onChange(changed);
+  const plex=options.plex&&sandbox.Data.appFor('plex')?options.plex:null;
   return {
-    refresh(){if(!stopped)sandbox.Data.refresh();},
+    refresh(){
+      if(stopped)return;
+      sandbox.Data.refresh();
+      if(plex&&!plexPending){
+        plexPending=true;
+        Promise.resolve().then(()=>plex.refresh()).catch(()=>{}).finally(()=>{plexPending=false;changed();});
+      }
+    },
     snapshot(){
       const cache={};
       for(const key of CACHE_KEYS){
@@ -74,10 +83,12 @@ function createEngine(options){
           }catch{/* Do not publish malformed persisted cache data. */}
         }else cache[key]=values[key];
       }
-      return {version:1,keyConfigured:!!token,locationKnown:!!window.ZONES[context.zone],
-        city:sandbox.Place.city,cache,error:sandbox.Data.recsError(),pending};
+      const personal=plex?plex.snapshot():{state:options.plex?'app-unavailable':'disabled',picks:[]};
+      cache['fmtv.recs']=mergePlex(cache['fmtv.recs'],personal.picks.filter(p=>!token||!JSON.stringify(p).includes(token)),!!token);
+      return {version:1,keyConfigured:!!token,plexConfigured:!!plex,plexState:personal.state,locationKnown:!!window.ZONES[context.zone],
+        city:sandbox.Place.city,cache,error:sandbox.Data.recsError(),pending:pending+(plexPending?1:0)};
     },
-    stop(){stopped=true;for(const id of timers)clearTimeout(id);timers.clear();}
+    stop(){stopped=true;for(const id of timers)clearTimeout(id);timers.clear();if(options.plex)options.plex.stop();}
   };
 }
 module.exports={createEngine,CACHE_KEYS};

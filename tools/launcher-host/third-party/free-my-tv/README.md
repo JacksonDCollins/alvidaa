@@ -35,6 +35,15 @@ This pinned source now drives the reversible on-TV web-port trial. **Complete
 visual/behavioral and physical acceptance is still pending.** See
 [the parity plan](../../../../docs/launcher/FREE-MY-TV-WEB-PARITY.md).
 
+## Personal Plex integration (offline-tested extension)
+
+The web snapshot does not contain the original Android project's personal
+integrations. `native-feed-plex.cjs` separately adapts the Plex library logic
+from [canonical `Recs.java`](https://github.com/simbasjungles/free-my-tv/blob/ed6be1ecaa98804c383fa021cdb648fd80f061f3/app/src/io/freemytv/Recs.java)
+at `ed6be1ecaa98804c383fa021cdb648fd80f061f3`, under the same MIT notice.
+See [Plex scope, private setup and teardown](../../NATIVE-PLEX.md). This is not
+the complete Android implementation, and real-server/TV acceptance is pending.
+
 ## Installed first adaptation (historical scope)
 
 `../../free-my-tv-native.js` implements a simplified offline/no-picks adaptation:
