@@ -2,7 +2,8 @@
 
 Status: deployed on the tested 55A7KAU. Automatic discovery, movie/show posters,
 movie-card-to-details launch without playback, disable/removal, and guarded
-rollback/reapply passed. Actual profile switching and logout/login remain pending.
+rollback/reapply passed. Actual logout/login passed; profile switching remains unverified after a native
+Plex loading hang.
 See [rollout evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/24-plex-parity-and-safe-rollout.md).
 
 This is an opt-in extension to the existing native web port. It adapts the Plex
@@ -50,7 +51,10 @@ reads. It does not automatically choose an unknown server, sign in, bypass a PIN
 or follow another cached profile. Discovery is polled, not a synchronous Plex event.
 
 This implementation passed offline account-switch/failure tests and a read-only
-TV selector probe; it has **not** passed deployed login/logout acceptance. Original
+TV selector probe. Deployed logout/login passed: personal picks and artwork
+references disappeared about four seconds after the monitor observed sign-out,
+and returned after successful sign-in. Profile-switch acceptance remains blocked
+by a reported native Plex loading hang; its cause is unproven. Original
 Android title navigation, portrait posters and refresh alignment are implemented;
 see [rollout evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/24-plex-parity-and-safe-rollout.md) for the remaining integrated checks. See [automatic-session evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/23-plex-automatic-session.md).
 
@@ -131,5 +135,6 @@ Plex-only rendering, localized metadata, disconnect and package completeness.
 Real-server certificate/DNS, library and artwork transport checks passed using
 the selected TV user's server-scoped token; the ordinary native Plex launch was
 also exercised. Deployed movie/show portrait rendering, movie-card-to-APC details,
-disable/removal and guarded rollback/reapply passed. Actual profile-switch and
-logout/login acceptance still require the operator's normal Plex authentication.
+disable/removal, guarded rollback/reapply and actual logout/login passed.
+Profile switching remains unverified: the operator encountered a native Plex
+loading hang and returned Home before a completed account change was observed.

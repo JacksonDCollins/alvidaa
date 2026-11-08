@@ -183,8 +183,31 @@ image mappings, rather than waiting for public image processing. Automatic mode
 was restored again with the TMDB configuration unchanged. No account switch or
 logout/login had been performed by the operator during these checks.
 
+## Operator-assisted logout/login passed; profile switch blocked
+
+The operator completed sign-out/sign-in, but reported that switching profiles
+left native Plex loading indefinitely, so returned Home early. A bounded read-only
+monitor recorded these transitions (elapsed milliseconds from its start):
+
+- 284342: selected storage became `signed-out`; the worker still advertised its
+  prior two picks and ten image mappings.
+- 288322: the worker became `signed-out`, with zero personal picks and zero image
+  mappings: approximately four seconds after the observer saw logout.
+- 359981–375927: sign-in passed through `no-access`, then source `ready` while the
+  worker moved through `unavailable`/`pending`; personal picks and mappings stayed
+  absent until worker `ready` restored two picks and ten mappings.
+
+No different authorized account signature was observed. Thus logout removal and
+login repopulation passed, but successful profile-switch following did not. This
+observation neither explains the native Plex loading hang nor attributes it to
+the launcher. No playback, account injection, PIN bypass or restart was used.
+
+A post-test check confirmed the selected worker remained automatic/ready with
+two picks and ten mappings. Preferences and the retired-startup bootstrap hash
+were unchanged; free space was 107,798,528 bytes, above the 64 MiB reserve.
+
 ## Still pending
 
-Actual login/logout/account-switch acceptance requires operator-assisted Plex
-authentication. Do not inject credentials into Plex storage or bypass profile
-protection to complete a test. A cold boot remains untested and unauthorized.
+Investigate native Plex's profile-switch loading hang before repeating that
+acceptance test. Do not inject credentials into Plex storage or bypass profile
+protection. A cold boot remains untested and unauthorized.
