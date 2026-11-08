@@ -5,9 +5,10 @@ The scope is the Plex library behavior from Android Free My TV's
 with credentials obtained from the logged-in native Plex app instead of supplied
 URL/token fields. This is not a port of every Android feature.
 
-The narrowed implementation is locally tested; its connection adapter passed a
-read-only real-TV connection/library/artwork probe before subsequent offline-only
-refinements. Its release acceptance is still pending; see
+The narrowed implementation is installed. App-derived connections, artwork
+preparation, publication, disable/restoration and Home rendering passed live checks;
+see [deployment evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/26-plex-app-connections-deployed.md).
+Its offline comparison and deterministic package are recorded in
 [scope correction evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/25-plex-scope-correction.md).
 Earlier deployed acceptance is recorded in
 [finding 24](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/24-plex-parity-and-safe-rollout.md).
@@ -84,5 +85,7 @@ using only app-provided connections.
 
 Previously deployed logout/login, card rendering, movie details, disable and
 rollback passed. Native profile switching hung during the operator's attempt and
-remains unverified; its cause is not established. The narrower release must be
-accepted separately rather than inheriting all earlier deployment results.
+remains unverified; its cause is not established. On the narrower release, current
+hourly rotation selected no personal card in any tab, so a displayed personal
+portrait and card-to-details click have not yet been retested. Earlier results
+are not silently promoted to fresh acceptance.
