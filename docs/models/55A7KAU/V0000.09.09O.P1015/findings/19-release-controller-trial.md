@@ -105,7 +105,21 @@ reverse-shell channel or manually starting the feed.
   rather than merely surviving as stale pre-boot files.
 
 This establishes autonomous Home startup, feed startup, preference persistence
-and independent SSH recovery for this tested cold boot. Physical voice/audio/
-playback, actual accessibility-mode transitions and subjective acceptance remain
-open. The legacy reverse-shell channel is still configured; its retirement is a
-separate guarded change, not an automatic consequence of this successful test.
+and independent SSH recovery for this tested cold boot.
+
+## Operator playback, voice and accessibility acceptance
+
+The operator subsequently confirmed: “video audio works and home button takes us
+back to the free my tv launcher. voice and accessibility modes work.” This closes
+the requested operator checks for visible/audible playback, native Home return,
+voice and the accessibility modes they exercised. It is direct operator evidence,
+not an inference from HAL screenshots or desktop tests.
+
+The particular app, accessibility modes and final preference values were not
+specified. This confirmation does not establish exhaustive app/locale/restriction
+coverage, prove every blocklist endpoint harmless, or independently verify that
+any temporarily changed accessibility preferences were restored.
+
+The legacy reverse-shell channel is still configured; its retirement remains a
+separate guarded change. Overall release sign-off remains distinct from these
+successful functional checks.
