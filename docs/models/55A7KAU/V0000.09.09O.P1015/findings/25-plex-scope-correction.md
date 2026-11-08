@@ -91,3 +91,29 @@ account-switch, boot and performance acceptance remain unverified. Retain the ol
 private configuration unchanged so a rollback to the earlier release still works.
 PR39 was rechecked: open, cleanly mergeable, and still the post-PR29 branch—not this
 Plex branch. No Plex publication or deployment is implied by these offline checks.
+
+## Prepared private release (not installed)
+
+- Code: `b60ee60`, following scope correction `5334bd2`.
+- Local archive: `firmware/55a7kau-09.09o/plex-b60ee60.tar.gz` (gitignored,
+  mode 0600), 26,013,582 bytes.
+- SHA256: `e6b385440ce52ca5537d2aa9706d0aa2a97471286832178c944696e7e6933797`.
+- Candidate Home SHA256: `470e8cac2970ecfba71d5bc10a160d0556e60c7a05aacaf57edc3b4699cdcce9`.
+- Unchanged asset ID: `49e13fbfa4c41725e0cd`; 1,808 manifest files;
+  runtime payload 5,029,719 bytes.
+
+Two independent builds were byte-identical. The archive's own release coordinator
+verified its extracted inventory, pinned sources, Home syntax, assets and ARM32
+helper entirely on the host. No credentials were packaged. The superseded
+never-deployed candidate created during this session was removed only after the
+final archive passed; historical deployed-release archives were untouched.
+
+Packaging trap: even a comparison archive must remain under `firmware/`; a generic
+host temporary-directory output was correctly rejected. Both final builds and
+extraction used private directories under the allowed tree.
+
+When the TV is available, recheck live Home/worker ownership, preferences, bootstrap
+and free space before staging. Reuse only hash-verified immutable assets and use
+the existing coordinator; retain every recovery journal and the 64 MiB reserve.
+Keep the private configuration unchanged for backward rollback compatibility.
+Do not apply, wake the TV or infer device acceptance from this offline receipt.
