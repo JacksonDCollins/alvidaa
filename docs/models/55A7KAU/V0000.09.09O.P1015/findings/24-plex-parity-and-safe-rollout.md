@@ -167,11 +167,24 @@ Startup sanitizes persisted recommendations and artwork in automatic, disabled
 and manual modes. Internal verified image caching remains available, but does not
 authorize publication. Tests cover stale posters/originals, orphan media, native
 icons and their derived resources, malformed context/cache, logout and late
-cancelled callbacks. All 175 launcher tests pass; deployment verification follows.
+cancelled callbacks. All 175 launcher tests, three packaging tests and repository
+checks pass. LSP reported no errors (two files confirmed clean, one inconclusive).
+
+Fix `76df954` was packaged as
+`169d86f5c2e8a8067a00ba72efa4f2fdaada115575de176408e7f3758567c50a` and applied
+through the coordinator, journal `web-releases/release-lW76Zn`. This runtime-only
+change retains Home hash `bde9180b…`. With Plex disabled, all twenty privately
+recorded old artwork resource URIs were absent from the entire published snapshot,
+while 47 native icon aliases remained. Free space was 106,627,072 bytes.
+
+After re-enabling, the worker again published two authorized picks and ten image
+mappings. A fresh disable/restart immediately produced zero picks and zero private
+image mappings, rather than waiting for public image processing. Automatic mode
+was restored again with the TMDB configuration unchanged. No account switch or
+logout/login had been performed by the operator during these checks.
 
 ## Still pending
 
-Deploy and verify artwork revocation, then actual login/logout/account-switch
-acceptance requires operator-assisted Plex
+Actual login/logout/account-switch acceptance requires operator-assisted Plex
 authentication. Do not inject credentials into Plex storage or bypass profile
 protection to complete a test. A cold boot remains untested and unauthorized.
