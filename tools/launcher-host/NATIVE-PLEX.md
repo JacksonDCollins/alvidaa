@@ -1,7 +1,9 @@
 # Plex library recommendations on VIDAA
 
-Status: implemented and tested offline; **not yet provisioned or validated against
-the operator's Plex server or deployed to the TV**.
+Status: implementation and offline tests pass. The operator's selected TV Plex
+session has also passed real-server library/artwork checks over verified LAN
+HTTPS. **The integration is not yet provisioned into the TV worker or deployed
+to Home.** See [session-reuse evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/22-plex-session-reuse.md).
 
 This is an opt-in extension to the existing native web port. It adapts the Plex
 library logic from [canonical Free My TV `Recs.java`](https://github.com/simbasjungles/free-my-tv/blob/ed6be1ecaa98804c383fa021cdb648fd80f061f3/app/src/io/freemytv/Recs.java),
@@ -99,6 +101,8 @@ Reverting code uses the existing release/Home recovery mechanisms.
 Offline tests cover credential permissions, request boundaries, private DNS,
 redirect/body/token rejection, cancellation, backoff, selection, artwork caching,
 Plex-only rendering, localized metadata, disconnect and package completeness.
-A real-server trial must still confirm certificate/DNS compatibility, library
-visibility, actual on-TV artwork, native Plex launch and removal. Specific-title
-launching remains explicitly unimplemented until VIDAA support is demonstrated.
+Real-server certificate/DNS, library and artwork transport checks passed using
+the selected TV user's server-scoped token; the ordinary native Plex launch was
+also exercised. Integrated on-TV card rendering, card-to-app launch and removal
+still need acceptance after safe deployment. Specific-title launching remains
+explicitly unimplemented until VIDAA support is demonstrated.
