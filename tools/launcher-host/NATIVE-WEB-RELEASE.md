@@ -45,8 +45,10 @@ python3 tools/launcher-host/test_native_web_package.py
 ## Deployment boundaries
 
 `native-web-release.cjs` coordinates upgrades and rollback for the existing
-configured native Home, and provides stock-Home/feed-hook teardown. **The new
-coordinator has offline tests only; its TV lifecycle trial is still pending.**
+configured native Home, and provides stock-Home/feed-hook teardown. Its guarded
+apply, exact rollback, reapply and stock teardown have now been exercised on the
+owned TV; see [trial evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/19-release-controller-trial.md).
+This does not close the cold-boot or full platform acceptance gates.
 It does not provision root, pair a new TV, install initial credentials or configure
 a first boot hook. Those remain the explicit existing setup recipes.
 
@@ -90,7 +92,10 @@ CTL="$STAGE/runtime/native-web-release.cjs"
 
 Apply requires the existing native Home and feed boot hook to be installed and
 unmodified. It checks shared firmware, candidate syntax, package contents,
-ownership and free-space headroom before changing the runtime. It retains exact
+ownership and free-space headroom before changing the runtime. Existing verified
+assets are reused, and allocations are summed per filesystem rather than charging
+all assets to every mount. Retained journals consume space; insufficient headroom
+is a refusal, not permission to delete recovery history. It retains exact
 runtime bytes/modes and a self-contained recovery controller/helper, stops only
 the owned feed, holds its inherited kernel lock and uses the existing Home lock
 and stopped-engine update. A failed update or failed new worker startup rolls
