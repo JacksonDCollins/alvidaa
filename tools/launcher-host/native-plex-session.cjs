@@ -7,8 +7,8 @@ const {serverOrigin,TOKEN}=require('./native-feed-plex.cjs');
 const SERVER=/^[A-Za-z0-9_-]{8,128}$/;
 function configuration(value){
  if(value.plex_auto===undefined||value.plex_auto===false)return null;
- if(value.plex_auto!==true||typeof value.plex_server_id!=='string'||!SERVER.test(value.plex_server_id))throw new Error('Automatic Plex needs an approved server identity');
- return {serverId:value.plex_server_id};
+ if(value.plex_auto!==true)throw new Error('Invalid automatic Plex configuration');
+ return {};
 }
 function scalar(value){
  if(typeof value!=='string'||!value||value==='null')return null;
@@ -29,13 +29,28 @@ function select(settings,binding){
  const selected=Object.entries(users).filter(([key,user])=>user&&typeof user==='object'&&!Array.isArray(user)&&
   (key===active||user.uuid===active)&&(user.uuid===undefined||user.uuid===active)&&user.authToken===accountToken);
  if(selected.length!==1)return {state:'unavailable'};
+ const userKeys=new Set([active,selected[0][0],selected[0][1].uuid]);
  const targets=Object.entries(servers).filter(([key,server])=>server&&typeof server==='object'&&!Array.isArray(server)&&
-  (key===binding.serverId||server.id===binding.serverId||server.identifier===binding.serverId)&&
-  (server.id===undefined||server.id===binding.serverId)&&(server.identifier===undefined||server.identifier===binding.serverId));
+  SERVER.test(key)&&(server.type===undefined||server.type==='pms')&&
+  (server.id===undefined||server.id===key)&&(server.identifier===undefined||server.identifier===key)&&
+  [...userKeys].some(userKey=>typeof own(own(links,userKey),key)?.token==='string'));
  if(targets.length===0)return {state:'no-access'};
- if(targets.length!==1)return {state:'unavailable'};
- const [serverKey,server]=targets[0],tokens=new Set();
- for(const userKey of new Set([active,selected[0][0],selected[0][1].uuid])){
+ let target;
+ const pinned=settings[active+'-PinnedSources'];
+ if(pinned!==undefined){
+  let sources;try{sources=JSON.parse(pinned);}catch{return {state:'unavailable'};}
+  if(!Array.isArray(sources)||sources.length>512)return {state:'unavailable'};
+  // The native app's first visible personal-library source determines its preferred server.
+  for(const source of sources){
+   if(!source||source.hidden)continue;
+   target=targets.find(([key])=>key===source.serverId||key===source.providerId);
+   if(target)break;
+  }
+ }
+ if(!target&&targets.length===1)target=targets[0];
+ if(!target)return {state:'unavailable'};
+ const [serverKey,server]=target,tokens=new Set();
+ for(const userKey of userKeys){
   const userLinks=own(links,userKey);if(!userLinks||Array.isArray(userLinks))continue;
   for(const key of new Set([serverKey,server.id,server.identifier])){
    const link=own(userLinks,key);if(link&&typeof link.token==='string')tokens.add(link.token);
@@ -52,7 +67,7 @@ function select(settings,binding){
   }
   if(!origins.length||origins.length>8)return {state:'unavailable'};
   const token=[...tokens][0];if(!TOKEN.test(token))return {state:'unavailable'};
-  const credentials={origins,token,serverId:binding.serverId};
+  const credentials={origins,token,serverId:serverKey};
   // This fingerprint stays private; never include it or account identifiers in snapshots.
   const signature=crypto.createHash('sha256').update(JSON.stringify([active,origins,credentials.serverId,token])).digest('hex');
   return {state:'ready',credentials,signature};

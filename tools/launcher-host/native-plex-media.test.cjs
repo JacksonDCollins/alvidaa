@@ -4,14 +4,14 @@ const {readCredentials,renderableSnapshot}=require('./native-feed-worker.cjs');
 const {createMedia}=require('./native-feed-images.cjs');
 const ref='/plex-'+'a'.repeat(64)+'.jpg',base='file:///hisenseUI/var/local/free-my-tv/media/';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');
-test('automatic Plex uses private server identity configuration, never a manual URL/token override',t=>{
+test('automatic Plex ignores legacy server, URL and token overrides',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fmtv-plex-keys-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const keys=path.join(dir,'server/keys');fs.mkdirSync(keys,{recursive:true});const file=path.join(keys,'feed.json');
  const config={tmdb_token:'',plex_auto:true,plex_server_id:'fixture-server',plex_url:'ignored-url',plex_token:'ignored-token'};
  fs.writeFileSync(file,JSON.stringify(config),{mode:0o600});const value=readCredentials(file);
- assert.equal(value.token,'');assert.deepEqual(value.automatic,{serverId:'fixture-server'});assert.equal(Object.hasOwn(value,'plex'),false);
+ assert.equal(value.token,'');assert.deepEqual(value.automatic,{});assert.equal(Object.hasOwn(value,'plex'),false);
  fs.chmodSync(file,0o644);assert.throws(()=>readCredentials(file),/permissions/);fs.chmodSync(file,0o600);
- fs.writeFileSync(file,JSON.stringify({...config,plex_server_id:''}));assert.throws(()=>readCredentials(file));
+ fs.writeFileSync(file,JSON.stringify({tmdb_token:'',plex_auto:true}));assert.deepEqual(readCredentials(file).automatic,{});
  fs.writeFileSync(file,JSON.stringify({tmdb_token:'eyJ.existing-token'}));assert.equal(readCredentials(file).automatic,null);
  const other=path.join(dir,'public.json');fs.copyFileSync(file,other);assert.throws(()=>readCredentials(other),/server\/keys/);
 });

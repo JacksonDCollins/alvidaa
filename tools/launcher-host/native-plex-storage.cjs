@@ -136,7 +136,7 @@ function readPlex(directory=DIRECTORY,options={}){
  });
  function accept(key,value,sequence,type,target=latest){
   if(!key.subarray(0,ORIGIN.length).equals(ORIGIN))return;
-  const name=decode(key.subarray(ORIGIN.length));if(!KEYS.has(name))return;
+  const name=decode(key.subarray(ORIGIN.length));if(!KEYS.has(name)&&!/^[A-Za-z0-9_-]{1,128}-PinnedSources$/.test(name))return;
   if(value&&value.length>2*1024*1024)throw new Error('Plex setting size limit');
   const old=target.get(name);
   if(!old||old.sequence<sequence){

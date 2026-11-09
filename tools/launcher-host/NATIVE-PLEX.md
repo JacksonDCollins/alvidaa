@@ -38,17 +38,22 @@ that presentation to the Plex logic and VIDAA platform.
 
 ## Automatic credential adapter
 
-The existing private `server/keys/` feed configuration enables `plex_auto: true`
-and records the approved `plex_server_id`. Keep `tmdb_token` unchanged. Do not
-supply a Plex URL/token: legacy `plex_url` and `plex_token` overrides are ignored.
-The server identity is a selection boundary, not an account credential. Existing
-deployments should retain legacy private fields for rollback to older code; the
-new code ignores them. Do not remove fields an older installed release requires.
+The existing private `server/keys/` feed configuration only needs `plex_auto: true`.
+Keep `tmdb_token` unchanged. No configured Plex server identity, URL or token is
+required: legacy `plex_server_id`, `plex_url` and `plex_token` fields are ignored.
+Retain old private fields only for rollback compatibility with older releases.
 
 A bounded, read-only reader follows the native app's active authenticated user and
-that user's server-access record. Only that user's server-scoped token and the
-approved server's advertised HTTPS `*.plex.direct` connections are candidates.
-The adapter tries those connections, verifies the expected server identity, and
+that user's server-access record. It follows the first visible personal library
+in that user's native pinned-source order, or the sole accessible personal server
+when no such source selects one. Multiple servers with no native preference are
+ambiguous: it does not choose by cache order or use another profile's preference.
+This follows native library order, not a claimed live navigation/current-playback
+signal. Cloud providers are excluded.
+
+Only that user's server-scoped token and the selected server's advertised HTTPS
+`*.plex.direct` connections are candidates. The adapter tries those connections,
+verifies the identity learned from the app (not a configured allowlist), and
 reuses the successful connection. Like the original, remote Plex addresses are
 permitted; there is no added private-IP restriction.
 

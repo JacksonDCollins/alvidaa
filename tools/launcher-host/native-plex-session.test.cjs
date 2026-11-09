@@ -34,18 +34,33 @@ function fixture(t,values=settings()){
  const obsolete=table([[internal(appKey('PlexAuthToken'),9999),Buffer.from('\x01fake-obsolete-token')]]);fs.writeFileSync(path.join(directory,'000004.ldb'),obsolete);
  return {directory,remove(key){const header=Buffer.alloc(12);header.writeBigUInt64LE(100n);header.writeUInt32LE(1,8);fs.writeFileSync(path.join(directory,'000003.log'),log(Buffer.concat([header,Buffer.from([0]),field(appKey(key))])));}};
 }
-test('automatic configuration binds server identity; URL and token come only from the app',()=>{
+test('automatic configuration needs no server identity, URL or token',()=>{
  assert.equal(configuration({}),null);assert.equal(configuration({plex_auto:false}),null);
- assert.equal(binding().serverId,SERVER);assert.equal(Object.hasOwn(binding(),'token'),false);
- for(const value of [{plex_auto:'true'},{plex_auto:true,plex_url:ORIGIN}])assert.throws(()=>configuration(value));
- assert.deepEqual(configuration({plex_auto:true,plex_server_id:SERVER,plex_url:'ignored-override'}),{serverId:SERVER});
+ assert.deepEqual(binding(),{});assert.deepEqual(configuration({plex_auto:true}),{});
+ assert.throws(()=>configuration({plex_auto:'true'}));
+ assert.deepEqual(configuration({plex_auto:true,plex_server_id:'ignored',plex_url:'ignored-override'}),{});
 });
 test('selects only the active account server-scoped token, not its cloud token or another cached profile',()=>{
  const a=select(settings(),binding()),b=select(settings('user-b'),binding());
  assert.equal(a.state,'ready');assert.deepEqual(a.credentials.origins,[ORIGIN]);assert.equal(a.credentials.token,'fake-server-user-a');assert.equal(b.credentials.token,'fake-server-user-b');assert.notEqual(a.signature,b.signature);
  const switched=settings();switched.LastActiveUserUuid='user-b';assert.equal(select(switched,binding()).state,'unavailable');
  const noAccess=settings();noAccess.OfflineUserServersData=JSON.stringify({'user-b':{[SERVER]:{token:'fake-server-user-b'}}});assert.equal(select(noAccess,binding()).state,'no-access');
- assert.equal(select(settings(),{...binding(),serverId:'different-server'}).state,'no-access');
+ assert.equal(select(settings(),{serverId:'ignored-legacy-pin'}).credentials.serverId,SERVER);
+});
+test('follows the active user native source order and switches servers without configuration changes',t=>{
+ const value=settings(),second='second-server-identity',servers=JSON.parse(value.OfflineServersData),links=JSON.parse(value.OfflineUserServersData);
+ servers[second]={id:second,type:'pms',connections:[{uri:ORIGIN}]};links['user-a'][second]={token:'fake-second-token'};
+ value.OfflineServersData=JSON.stringify(servers);value.OfflineUserServersData=JSON.stringify(links);
+ assert.equal(select(value,binding()).state,'unavailable','ambiguous servers are not chosen by cache order');
+ value['user-b-PinnedSources']=JSON.stringify([{serverId:SERVER}]);
+ value['user-a-PinnedSources']=JSON.stringify([{serverId:second},{serverId:SERVER}]);
+ const first=select(value,binding());assert.equal(first.credentials.serverId,second);assert.equal(first.credentials.token,'fake-second-token');
+ const f=fixture(t,value);assert.equal(select(storage.readPlex(f.directory).settings,binding()).credentials.serverId,second);
+ value['user-a-PinnedSources']=JSON.stringify([{serverId:second,hidden:true},{serverId:SERVER}]);
+ const next=select(value,binding());assert.equal(next.credentials.serverId,SERVER);assert.notEqual(next.signature,first.signature);
+ value['user-a-PinnedSources']='broken';assert.equal(select(value,binding()).state,'unavailable');
+ delete value['user-a-PinnedSources'];delete links['user-a'][SERVER];value.OfflineUserServersData=JSON.stringify(links);
+ assert.equal(select(value,binding()).credentials.serverId,second,'sole accessible server needs no pin');
 });
 test('only canonical app-advertised HTTPS endpoints are candidates; no saved URL fallback',()=>{
  const value=settings(),remote='https://remote.fixture.plex.direct:32400';
