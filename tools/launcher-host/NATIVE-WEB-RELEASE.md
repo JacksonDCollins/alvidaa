@@ -158,11 +158,16 @@ bytes and metadata, refusing concurrent edits. The first backup is retained
 across reinstallations. These operations were exercised on the TV without
 rebooting or running the complete root installer.
 
-The original root payload, SSH setup, blocklist and older phone-home section are
-unchanged. **The older phone-home section starts an unauthenticated reverse-shell
-retry loop**, not just a notification. The launcher does not need it, but stopping
-the PC listener did not retire it. Independently verify root SSH after cold boot
-before separately retiring this recovery channel; do not invalidate the feed
-journal with an ad-hoc installer edit. No new listener or MQTT session is
-introduced by this port. The boot entry is configured and manually tested;
-cold-boot, standby and playback/blocklist-collateral acceptance remain pending.
+The feed-hook patch itself preserves the original root payload, SSH setup,
+blocklist and older phone-home section. **That older section starts an
+unauthenticated reverse-shell retry loop**, not just a notification; stopping its
+PC listener does not retire it. A separate fingerprint-guarded retirement operation
+now removes it while migrating the feed recovery baseline safely. See
+[startup retirement and exceptional recovery](NATIVE-STARTUP-RETIREMENT.md).
+Do not invalidate the feed journal with an ad-hoc installer edit.
+
+Retirement was applied and fresh SSH verified on the tested TV; it was not
+cold-boot-tested afterward. Earlier boot/playback evidence is recorded separately
+in the model findings, not promoted to post-retirement acceptance. Standby and
+blocklist-collateral coverage remains incomplete. No new listener or MQTT session
+is introduced by this port.
