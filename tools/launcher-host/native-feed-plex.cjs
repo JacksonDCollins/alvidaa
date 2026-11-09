@@ -18,6 +18,7 @@ function serverOrigin(url){
  return {origin:parsed.origin,hostname:parsed.hostname};
 }
 function createPlex(config,options={}){
+ if(config.servers)return createLibraries(config.servers,options);
  // Revalidate even callers that did not come through the worker's credential reader.
  const candidates=config.origins||[config.origin];
  if(!Array.isArray(candidates)||!candidates.length||candidates.length>8)throw Error('Invalid Plex connections');
@@ -93,11 +94,11 @@ function createPlex(config,options={}){
   const lists={movie:[],tv:[]},nextRefs=new Map();
   function imageRef(path){
    if(typeof path!=='string'||!ART.test(path))return null;
-   const ref='/plex-'+digest(origin+'\n'+path)+'.jpg';nextRefs.set(ref,path);return ref;
+   const ref='/plex-'+digest(serverId+'\n'+origin+'\n'+path)+'.jpg';nextRefs.set(ref,path);return ref;
   }
   for(const kind of ['movie','tv']){
    try{for(const section of sections){
-   if(!section||section.type!==(kind==='movie'?'movie':'show')||lists[kind].length>=8)continue;
+   if(!section||section.type!==(kind==='movie'?'movie':'show')||(!options.allCandidates&&lists[kind].length>=8))continue;
    if(!/^[1-9][0-9]{0,9}$/.test(String(section.key)))throw Error('Invalid Plex section');
    const result=await json('/library/sections/'+section.key+'/all?sort=addedAt:desc&X-Plex-Container-Start=0&X-Plex-Container-Size=8',signal);
    const items=result.Metadata||[];
@@ -110,18 +111,22 @@ function createPlex(config,options={}){
     if(kind==='tv')parts.push('Series');if(genre)parts.push(genre);parts.push('Plex');
     const minutes=Math.floor(Number(item.duration)/60000),seasons=Number(item.childCount);
     const pick={id:-Number(item.ratingKey),kind,title,backdrop,poster:imageRef(item.thumb),logo:null,
+     ...(options.allCandidates?{addedAt:Number.isSafeInteger(item.addedAt)&&item.addedAt>=0?item.addedAt:0}:{}),
      genre,minutes:Number.isSafeInteger(minutes)&&minutes>0?minutes:0,
      seasons:Number.isSafeInteger(seasons)&&seasons>0?seasons:0,
      app:'plex',meta:parts.join(' · '),detailed:true,source:'plex',
      plexTitle:{providerId:serverId,ratingKey:String(item.ratingKey)}};
     if([token,origin].some(secret=>JSON.stringify(pick).includes(secret)))continue;
-    lists[kind].push(pick);if(lists[kind].length===8)break;
+    lists[kind].push(pick);if(!options.allCandidates&&lists[kind].length===8)break;
    }
   }
    }catch(error){if(kind==='movie'||signal.aborted||stopped)throw error;lists.tv=[];}
   }
   const selected=[];
-  for(const list of Object.values(lists))if(list.length)selected.push(list[((turn%list.length)+list.length)%list.length]);
+  for(const list of Object.values(lists))if(list.length){
+   if(options.allCandidates)selected.push(...list);
+   else selected.push(list[((turn%list.length)+list.length)%list.length]);
+  }
   return {selected,nextRefs};
  }
  function refresh(){
@@ -149,6 +154,53 @@ function createPlex(config,options={}){
     .catch(()=>{if(!stopped)imageFailures.set(ref,now()+5*60000);throw Error('Plex artwork unavailable');});
   },
   stop(){stopped=true;for(const cancel of [...requests])cancel();picks=[];refs.clear();imageFailures.clear();}
+ };
+}
+function createLibraries(servers,options){
+ if(!Array.isArray(servers)||!servers.length||servers.length>64||new Set(servers.map(s=>s.serverId)).size!==servers.length||
+    servers.some(s=>typeof s.serverId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(s.serverId)))throw Error('Invalid Plex servers');
+ const factory=options.clientFactory||createPlex,now=options.now||Date.now;
+ let stopped=false,inflight=null,state='pending',picks=[],owners=new Map(),current=[],loading=[];
+ function refresh(){
+  if(stopped)return Promise.resolve();if(inflight)return inflight;
+  const next=[],active=new Set();let index=0,expired=false;
+  const timer=setTimeout(()=>{expired=true;for(const client of active)client.stop();},options.refreshTimeoutMs||30000);
+  async function run(){
+   while(!stopped&&!expired&&index<servers.length){
+    const config=servers[index++];let client;
+    try{
+     client=factory(config,{...options,allCandidates:true});loading.push(client);active.add(client);
+     await client.refresh();
+     if(!stopped&&client.snapshot().state==='ready')next.push({client,serverId:config.serverId,picks:client.snapshot().picks});
+    }catch{/* Other servers can still contribute. */}
+    finally{if(client)active.delete(client);}
+   }
+  }
+  inflight=Promise.all(Array.from({length:Math.min(4,servers.length)},run)).then(()=>{
+   if(stopped)return;
+   const routes=new Map(),selected=[],turn=Math.trunc(now()/3600000);
+   for(const kind of ['movie','tv']){
+    const candidates=next.flatMap(entry=>entry.picks.filter(p=>p.kind===kind).map(p=>({pick:p,entry})));
+    candidates.sort((a,b)=>(b.pick.addedAt||0)-(a.pick.addedAt||0)||a.entry.serverId.localeCompare(b.entry.serverId)||String(a.pick.plexTitle.ratingKey).localeCompare(String(b.pick.plexTitle.ratingKey)));
+    const seen=new Set(),recent=candidates.filter(({pick,entry})=>{const key=entry.serverId+':'+pick.plexTitle.ratingKey;if(seen.has(key))return false;seen.add(key);return true;}).slice(0,8);
+    if(!recent.length)continue;
+    const {pick,entry}=recent[((turn%recent.length)+recent.length)%recent.length];
+    const {addedAt,...value}=pick;
+    // Server-local rating keys can collide; keep browser IDs numeric and negative.
+    value.id=-(parseInt(digest(entry.serverId+'\n'+kind+'\n'+pick.plexTitle.ratingKey).slice(0,12),16)+1);
+    selected.push(value);
+    for(const ref of [value.backdrop,value.poster])if(ref)routes.set(ref,entry.client);
+   }
+   for(const client of current)client.stop();
+   const keep=new Set(routes.values());for(const client of loading)if(!keep.has(client))client.stop();
+   current=[...keep];owners=routes;picks=selected;state=next.length?'ready':'unavailable';
+  }).finally(()=>{clearTimeout(timer);loading=[];inflight=null;});
+  return inflight;
+ }
+ return {refresh,snapshot:()=>({state,picks:picks.map(p=>({...p}))}),
+  ownsImage:ref=>!stopped&&owners.has(ref)&&owners.get(ref).ownsImage(ref),
+  image:(ref,size)=>!stopped&&owners.has(ref)?owners.get(ref).image(ref,size):Promise.reject(Error('Unknown Plex image')),
+  stop(){stopped=true;for(const client of [...current,...loading])client.stop();current=[];owners.clear();picks=[];}
  };
 }
 function merge(cache,plexPicks,tmdbConfigured){

@@ -35,43 +35,34 @@ function select(settings,binding){
   (server.id===undefined||server.id===key)&&(server.identifier===undefined||server.identifier===key)&&
   [...userKeys].some(userKey=>typeof own(own(links,userKey),key)?.token==='string'));
  if(targets.length===0)return {state:'no-access'};
- let target;
- const pinned=settings[active+'-PinnedSources'];
- if(pinned!==undefined){
-  let sources;try{sources=JSON.parse(pinned);}catch{return {state:'unavailable'};}
-  if(!Array.isArray(sources)||sources.length>512)return {state:'unavailable'};
-  // The native app's first visible personal-library source determines its preferred server.
-  for(const source of sources){
-   if(!source||source.hidden)continue;
-   target=targets.find(([key])=>key===source.serverId||key===source.providerId);
-   if(target)break;
-  }
- }
- if(!target&&targets.length===1)target=targets[0];
- if(!target)return {state:'unavailable'};
- const [serverKey,server]=target,tokens=new Set();
+ if(targets.length>64)return {state:'unavailable'};
+ const accessible=[];
+ for(const [serverKey,server] of targets.sort(([a],[b])=>a.localeCompare(b))){
+ const tokens=new Set();
  for(const userKey of userKeys){
   const userLinks=own(links,userKey);if(!userLinks||Array.isArray(userLinks))continue;
   for(const key of new Set([serverKey,server.id,server.identifier])){
    const link=own(userLinks,key);if(link&&typeof link.token==='string')tokens.add(link.token);
   }
  }
- if(tokens.size===0)return {state:'no-access'};
- if(tokens.size!==1)return {state:'unavailable'};
+ if(tokens.size!==1)continue;
  try{
-  if(!Array.isArray(server.connections)||server.connections.length>32)return {state:'unavailable'};
+  if(!Array.isArray(server.connections)||server.connections.length>32)continue;
   const origins=[];
   for(const connection of server.connections){
    if(!connection||connection.isRelay)continue;
    try{const {origin}=serverOrigin(connection.uri);if(!origins.includes(origin))origins.push(origin);}catch{/* Not a canonical secure Plex connection. */}
   }
-  if(!origins.length||origins.length>8)return {state:'unavailable'};
-  const token=[...tokens][0];if(!TOKEN.test(token))return {state:'unavailable'};
-  const credentials={origins,token,serverId:serverKey};
-  // This fingerprint stays private; never include it or account identifiers in snapshots.
-  const signature=crypto.createHash('sha256').update(JSON.stringify([active,origins,credentials.serverId,token])).digest('hex');
-  return {state:'ready',credentials,signature};
- }catch{return {state:'unavailable'};}
+  if(!origins.length||origins.length>8)continue;
+  const token=[...tokens][0];if(!TOKEN.test(token))continue;
+  accessible.push({origins,token,serverId:serverKey});
+ }catch{/* One malformed server must not hide another accessible library. */}
+ }
+ if(!accessible.length)return {state:'unavailable'};
+ const credentials={servers:accessible};
+ // Membership and token changes revoke the entire previous account generation.
+ const signature=crypto.createHash('sha256').update(JSON.stringify([active,accessible])).digest('hex');
+ return {state:'ready',credentials,signature};
 }
 function createSession(binding,options={}){
  const read=options.read||createReader(options.directory),stat=options.stat||fs.lstatSync;

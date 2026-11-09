@@ -3,7 +3,10 @@
 The scope is the Plex library behavior from Android Free My TV's
 [`Recs.java`](https://github.com/simbasjungles/free-my-tv/blob/ed6be1ecaa98804c383fa021cdb648fd80f061f3/app/src/io/freemytv/Recs.java),
 with credentials obtained from the logged-in native Plex app instead of supplied
-URL/token fields. This is not a port of every Android feature.
+URL/token fields. At the operator's request, all accessible personal servers now
+contribute to one pool. That is an intentional extension beyond the original
+single-server integration, not a claim of exact parity or a port of every Android
+feature. "Native app" means the existing stock Plex app; no replacement was added.
 
 The narrowed implementation is installed. App-derived connections, artwork
 preparation, publication, disable/restoration and Home rendering passed live checks;
@@ -18,8 +21,10 @@ Earlier deployed acceptance is recorded in
 - Use the existing recommendation-list refresh, including its six-hour interval,
   morning/afternoon/night periods, language/source changes and clock rollback.
   There is no independent Plex metadata-refresh loop.
-- Select one of the newest eight library movies and shows, in section order,
-  using the hour as the selection seed.
+- Query the newest eight items per library section across accessible servers,
+  combine by Plex's `addedAt` timestamp, and select one of the newest eight per
+  kind using the hour as the seed. Missing timestamps sort last; ties have stable
+  server/key ordering. Select one movie and one show overall, not per server.
 - Prepare artwork before adding a personal pick. Interleave each kind into the
   trending titles, alternate kinds, then fill with new releases up to 24 titles.
 - Show at most one personal Plex surprise per tab, not a guaranteed card each hour.
@@ -44,18 +49,22 @@ required: legacy `plex_server_id`, `plex_url` and `plex_token` fields are ignore
 Retain old private fields only for rollback compatibility with older releases.
 
 A bounded, read-only reader follows the native app's active authenticated user and
-that user's server-access record. It follows the first visible personal library
-in that user's native pinned-source order, or the sole accessible personal server
-when no such source selects one. Multiple servers with no native preference are
-ambiguous: it does not choose by cache order or use another profile's preference.
-This follows native library order, not a claimed live navigation/current-playback
-signal. Cloud providers are excluded.
+that user's server-access records. All accessible personal servers contribute;
+pinned-library order and recent browsing no longer select or exclude servers.
+Cloud providers, other users' access records and unusable connection/token records
+are excluded. Server membership/token changes revoke the previous generation.
 
-Only that user's server-scoped token and the selected server's advertised HTTPS
-`*.plex.direct` connections are candidates. The adapter tries those connections,
-verifies the identity learned from the app (not a configured allowlist), and
-reuses the successful connection. Like the original, remote Plex addresses are
-permitted; there is no added private-IP restriction.
+Each server uses only its own scoped token and advertised HTTPS `*.plex.direct`
+connections. Identity verification uses the app's record, not an allowlist.
+Artwork is routed to its originating client, title IDs are server-namespaced, and
+card details retain the original server/rating key. Like the original, remote
+Plex addresses are permitted; there is no added private-IP restriction.
+
+A refresh admits at most 64 servers with four active at once and a shared 30-second
+metadata deadline. Unavailable servers cannot fail successful peers; unfinished
+or not-yet-started servers at the deadline contribute nothing that round. No extra
+polling service is added. Different copies on different servers remain distinct;
+this is not cross-library content deduplication.
 
 TLS certificate verification remains enabled. Tokens travel only in headers,
 redirects are rejected, and request/file/image budgets remain bounded. Tokens,

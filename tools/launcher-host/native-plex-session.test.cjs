@@ -42,30 +42,34 @@ test('automatic configuration needs no server identity, URL or token',()=>{
 });
 test('selects only the active account server-scoped token, not its cloud token or another cached profile',()=>{
  const a=select(settings(),binding()),b=select(settings('user-b'),binding());
- assert.equal(a.state,'ready');assert.deepEqual(a.credentials.origins,[ORIGIN]);assert.equal(a.credentials.token,'fake-server-user-a');assert.equal(b.credentials.token,'fake-server-user-b');assert.notEqual(a.signature,b.signature);
+ assert.equal(a.state,'ready');assert.deepEqual(a.credentials.servers[0].origins,[ORIGIN]);assert.equal(a.credentials.servers[0].token,'fake-server-user-a');assert.equal(b.credentials.servers[0].token,'fake-server-user-b');assert.notEqual(a.signature,b.signature);
  const switched=settings();switched.LastActiveUserUuid='user-b';assert.equal(select(switched,binding()).state,'unavailable');
  const noAccess=settings();noAccess.OfflineUserServersData=JSON.stringify({'user-b':{[SERVER]:{token:'fake-server-user-b'}}});assert.equal(select(noAccess,binding()).state,'no-access');
- assert.equal(select(settings(),{serverId:'ignored-legacy-pin'}).credentials.serverId,SERVER);
+ assert.equal(select(settings(),{serverId:'ignored-legacy-pin'}).credentials.servers[0].serverId,SERVER);
 });
-test('follows the active user native source order and switches servers without configuration changes',t=>{
+test('uses all active-user personal servers, independent of pins, and fingerprints membership changes',t=>{
  const value=settings(),second='second-server-identity',servers=JSON.parse(value.OfflineServersData),links=JSON.parse(value.OfflineUserServersData);
  servers[second]={id:second,type:'pms',connections:[{uri:ORIGIN}]};links['user-a'][second]={token:'fake-second-token'};
+ servers['cloud-provider']={id:'cloud-provider',type:'cloudMediaProvider',connections:[{uri:ORIGIN}]};links['user-a']['cloud-provider']={token:'fake-cloud-token'};
  value.OfflineServersData=JSON.stringify(servers);value.OfflineUserServersData=JSON.stringify(links);
- assert.equal(select(value,binding()).state,'unavailable','ambiguous servers are not chosen by cache order');
- value['user-b-PinnedSources']=JSON.stringify([{serverId:SERVER}]);
- value['user-a-PinnedSources']=JSON.stringify([{serverId:second},{serverId:SERVER}]);
- const first=select(value,binding());assert.equal(first.credentials.serverId,second);assert.equal(first.credentials.token,'fake-second-token');
- const f=fixture(t,value);assert.equal(select(storage.readPlex(f.directory).settings,binding()).credentials.serverId,second);
- value['user-a-PinnedSources']=JSON.stringify([{serverId:second,hidden:true},{serverId:SERVER}]);
- const next=select(value,binding());assert.equal(next.credentials.serverId,SERVER);assert.notEqual(next.signature,first.signature);
- value['user-a-PinnedSources']='broken';assert.equal(select(value,binding()).state,'unavailable');
- delete value['user-a-PinnedSources'];delete links['user-a'][SERVER];value.OfflineUserServersData=JSON.stringify(links);
- assert.equal(select(value,binding()).credentials.serverId,second,'sole accessible server needs no pin');
+ value['user-a-PinnedSources']='unused malformed pins';
+ const first=select(value,binding());assert.equal(first.state,'ready');assert.deepEqual(first.credentials.servers.map(s=>s.serverId),[SERVER,second]);
+ assert.equal(first.credentials.servers[1].token,'fake-second-token');
+ const f=fixture(t,value);const read=storage.readPlex(f.directory).settings;assert.equal(read['user-a-PinnedSources'],undefined);assert.equal(select(read,binding()).signature,first.signature);
+ delete links['user-a'][SERVER];value.OfflineUserServersData=JSON.stringify(links);
+ const next=select(value,binding());assert.equal(next.credentials.servers.length,1);assert.equal(next.credentials.servers[0].serverId,second);assert.notEqual(next.signature,first.signature);
+ value.LastActiveUserUuid='user-b';value.PlexAuthToken='fake-account-user-b';assert.deepEqual(select(value,binding()).credentials.servers.map(s=>s.serverId),[SERVER]);
+});
+test('an unusable server record does not suppress another server authorized for the active user',()=>{
+ const value=settings(),servers=JSON.parse(value.OfflineServersData),links=JSON.parse(value.OfflineUserServersData);
+ servers['broken-server']={id:'broken-server',type:'pms',connections:[{uri:'http://localhost:9009'}]};links['user-a']['broken-server']={token:'fake-broken-token'};
+ value.OfflineServersData=JSON.stringify(servers);value.OfflineUserServersData=JSON.stringify(links);
+ assert.deepEqual(select(value,binding()).credentials.servers.map(s=>s.serverId),[SERVER]);
 });
 test('only canonical app-advertised HTTPS endpoints are candidates; no saved URL fallback',()=>{
  const value=settings(),remote='https://remote.fixture.plex.direct:32400';
  value.OfflineServersData=JSON.stringify({[SERVER]:{id:SERVER,connections:[{uri:'http://localhost:9009'},{uri:remote},{uri:ORIGIN},{uri:remote},{uri:ORIGIN,isRelay:true}]}});
- assert.deepEqual(select(value,binding()).credentials.origins,[remote,ORIGIN]);
+ assert.deepEqual(select(value,binding()).credentials.servers[0].origins,[remote,ORIGIN]);
  value.OfflineServersData=JSON.stringify({[SERVER]:{id:SERVER,connections:[{uri:'http://localhost:9009'}]}});
  assert.equal(select(value,binding()).state,'unavailable');
 });

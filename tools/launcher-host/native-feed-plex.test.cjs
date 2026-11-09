@@ -26,9 +26,14 @@ function fixture(options={}){
    res.emit('data',bytes);if(!res.dead)res.emit('end');
   }));return req;
  };
- const client=createPlex({...config(),origins:options.origins,serverId:options.serverId},{get,lookup,now:options.now||(()=>0),timeoutMs:options.timeoutMs||1000,refreshTimeoutMs:options.refreshTimeoutMs||1000});
+ const client=createPlex(options.servers?{servers:options.servers}:{...config(),origins:options.origins,serverId:options.serverId},{get,lookup,now:options.now||(()=>0),timeoutMs:options.timeoutMs||1000,refreshTimeoutMs:options.refreshTimeoutMs||1000});
  return {client,calls,destroyed:()=>destroyed};
 }
+test('real aggregate transport checks every movie section and selects the newest global candidates',async t=>{
+ const f=fixture({servers:[{origins:[ORIGIN],token:TOKEN,serverId:'fixture-server'}],body:u=>({MediaContainer:u.pathname==='/library/sections'?{Directory:[{key:'1',type:'movie'},{key:'3',type:'movie'}]}:{Metadata:Array.from({length:8},(_,i)=>({ratingKey:String((u.pathname.includes('/3/')?300:100)+i),title:'Fixture',addedAt:u.pathname.includes('/3/')?2000-i:1000-i,art:'/library/metadata/100/art/1',thumb:'/library/metadata/100/thumb/1'}))}})});
+ t.after(()=>f.client.stop());await f.client.refresh();const p=f.client.snapshot().picks[0];assert.equal(p.plexTitle.ratingKey,'300');assert.equal(p.plexTitle.providerId,'fixture-server');assert.equal(Object.hasOwn(p,'addedAt'),false);
+ await f.client.image(p.poster,'poster');assert.ok(f.calls.some(c=>c.url.includes('/library/sections/3/')));assert.ok(f.calls.every(c=>c.opts.headers['X-Plex-Token']===TOKEN));
+});
 test('private Plex transport requires an exact HTTPS origin and header-safe token',()=>{
  assert.throws(()=>createPlex({}));
  assert.equal(config().origin,ORIGIN);

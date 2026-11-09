@@ -3,6 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {start}=require('./native-feed-worker.cjs');
 const {createEngine}=require('./native-feed-engine.cjs');
+const {createPlex}=require('./native-feed-plex.cjs');
 const helper=process.env.NATIVE_IMAGE_HELPER;
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');
 test('real worker, canonical engine and image processor prepare personal cards and revoke them on logout',
@@ -15,15 +16,15 @@ test('real worker, canonical engine and image processor prepare personal cards a
  process.env.ALVIDAA_NATIVE_FEED_LOCK_PATH=lock;process.env.ALVIDAA_NATIVE_FEED_LOCK_FD=String(fd);
  let worker,downloads=0,clientStopped=false;
  t.after(()=>{if(worker)worker.stop();fs.closeSync(fd);if(oldPath===undefined)delete process.env.ALVIDAA_NATIVE_FEED_LOCK_PATH;else process.env.ALVIDAA_NATIVE_FEED_LOCK_PATH=oldPath;if(oldFD===undefined)delete process.env.ALVIDAA_NATIVE_FEED_LOCK_FD;else process.env.ALVIDAA_NATIVE_FEED_LOCK_FD=oldFD;fs.rmSync(dir,{recursive:true,force:true});});
- const ref='/plex-'+'a'.repeat(64)+'.jpg',pick={id:-1,kind:'movie',source:'plex',app:'plex',title:'Private movie',detailed:true,backdrop:ref,poster:ref};
- let account={state:'ready',signature:'active',credentials:{origins:['https://app.fixture.plex.direct:32400'],token:'fake-server-token',serverId:'fixture-server'}};
+ const ref='/plex-'+'a'.repeat(64)+'.jpg',pick={id:-1,kind:'movie',source:'plex',app:'plex',title:'Private movie',detailed:true,backdrop:ref,poster:ref,addedAt:100,plexTitle:{providerId:'fixture-server',ratingKey:'1'}};
+ let account={state:'ready',signature:'active',credentials:{servers:[{origins:['https://app.fixture.plex.direct:32400'],token:'fake-server-token',serverId:'fixture-server'}]}};
  worker=start({directory:dir,credentials,processor:helper,iconRoot:dir,
   sessionSource:{read:()=>account,stop(){}},
-  plexFactory:config=>{
-   assert.deepEqual(config.origins,account.credentials.origins);assert.equal(config.token,'fake-server-token');let ready=false;
+  plexFactory:config=>createPlex(config,{clientFactory:server=>{
+   assert.deepEqual(server.origins,account.credentials.servers[0].origins);assert.equal(server.token,'fake-server-token');let ready=false;
    return {refresh:async()=>{ready=true;},snapshot:()=>({state:clientStopped?'disabled':ready?'ready':'pending',picks:ready&&!clientStopped?[pick]:[]}),
     ownsImage:value=>ready&&!clientStopped&&value===ref,image:async()=>{assert.equal(clientStopped,false);downloads++;return png;},stop(){clientStopped=true;}};
-  },
+  }}),
   engineFactory:options=>createEngine({...options,request:async url=>({status:200,body:{results:url.includes('/watch/providers/')?[{provider_id:8,provider_name:'Netflix'}]:[]}})})
  });
  const snapshot=()=>JSON.parse(fs.readFileSync(snapshotFile,'utf8'));
