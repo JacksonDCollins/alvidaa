@@ -8,9 +8,10 @@ contribute to one pool. That is an intentional extension beyond the original
 single-server integration, not a claim of exact parity or a port of every Android
 feature. "Native app" means the existing stock Plex app; no replacement was added.
 
-The narrowed implementation is installed. App-derived connections, artwork
-preparation, publication, disable/restoration and Home rendering passed live checks;
-see [deployment evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/26-plex-app-connections-deployed.md).
+The all-server implementation is installed. App-derived connections, artwork
+preparation, publication, disable/restoration and Home rendering passed live checks
+with the account's one available personal server. Multiple-server behavior is
+fixture-tested; see [current deployment evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/28-plex-all-accessible-servers.md).
 Its offline comparison and deterministic package are recorded in
 [scope correction evidence](../../docs/models/55A7KAU/V0000.09.09O.P1015/findings/25-plex-scope-correction.md).
 Earlier deployed acceptance is recorded in
